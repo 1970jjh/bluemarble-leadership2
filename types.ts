@@ -108,6 +108,7 @@ export interface GameCard {
   situation: string;
   choices?: Choice[]; // Optional: If undefined/empty, it's an open-ended input
   learningPoint: string;
+  boardIndex?: number; // 보드 칸 인덱스 매핑 (커스텀 모드용)
 }
 
 export interface AIEvaluationResult {
