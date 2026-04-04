@@ -1,169 +1,317 @@
 import React, { useState } from 'react';
-import { Session, GameVersion, SessionStatus } from '../types';
+import { GameVersion, Team, Session, SessionStatus, TeamColor } from '../types';
+import { Plus, Trash2, Play, Pause, ExternalLink, QrCode, X, MonitorPlay, Copy, Check } from 'lucide-react';
+import { INITIAL_RESOURCES } from '../constants';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface LobbyProps {
   sessions: Session[];
-  onCreateSession: (name: string, version: GameVersion, teamCount: number, singlePieceMode?: boolean) => void;
+  onCreateSession: (name: string, version: GameVersion, teamCount: number, singlePieceMode?: boolean) => Promise<void>;
   onDeleteSession: (sessionId: string) => void;
   onUpdateStatus: (sessionId: string, status: SessionStatus) => void;
   onEnterSession: (session: Session) => void;
 }
 
-const statusLabels: Record<SessionStatus, string> = {
-  active: '진행 중',
-  paused: '일시정지',
-  ended: '종료',
-};
-
-const statusColors: Record<SessionStatus, string> = {
-  active: 'bg-green-400',
-  paused: 'bg-yellow-400',
-  ended: 'bg-gray-400',
-};
-
-const Lobby: React.FC<LobbyProps> = ({
-  sessions,
-  onCreateSession,
-  onDeleteSession,
+const Lobby: React.FC<LobbyProps> = ({ 
+  sessions, 
+  onCreateSession, 
+  onDeleteSession, 
   onUpdateStatus,
-  onEnterSession,
+  onEnterSession
 }) => {
-  const [sessionName, setSessionName] = useState('');
-  const [teamCount, setTeamCount] = useState(4);
+  // --- Create Session Form State ---
+  const [newName, setNewName] = useState('');
+  const [newTeamCount, setNewTeamCount] = useState(4);
   const [singlePieceMode, setSinglePieceMode] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
 
-  const handleCreate = () => {
-    if (!sessionName.trim()) return;
-    onCreateSession(sessionName.trim(), GameVersion.Custom, teamCount, singlePieceMode);
-    setSessionName('');
-    setTeamCount(4);
-    setSinglePieceMode(false);
+  // --- UI State ---
+  const [inviteModalSession, setInviteModalSession] = useState<Session | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  // 참가자 접속 URL 생성
+  const getJoinUrl = (accessCode: string) => {
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+    return `${baseUrl}?join=${accessCode}`;
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleCreate();
+  // 링크 복사 핸들러
+  const handleCopyLink = async (accessCode: string) => {
+    const url = getJoinUrl(accessCode);
+    try {
+      await navigator.clipboard.writeText(url);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch (err) {
+      // Fallback for browsers that don't support clipboard API
+      const textArea = document.createElement('textarea');
+      textArea.value = url;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    }
+  };
+
+  const handleCreate = async () => {
+    if (!newName.trim()) {
+      alert("세션 이름을 입력해주세요.");
+      return;
+    }
+    if (isCreating) return; // 중복 클릭 방지
+
+    setIsCreating(true);
+    try {
+      // 항상 커스텀 모드로 세션 생성
+      await onCreateSession(newName, GameVersion.Custom, newTeamCount, singlePieceMode);
+      setNewName('');
+      setNewTeamCount(4);
+      setSinglePieceMode(false);
+      alert("새로운 세션이 생성되었습니다.");
+    } catch (error) {
+      console.error('세션 생성 실패:', error);
+      alert("세션 생성에 실패했습니다.");
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const getStatusBadge = (status: SessionStatus) => {
+    switch (status) {
+      case 'active': return <span className="bg-green-500 text-white px-2 py-0.5 text-xs font-black uppercase border border-black">Active</span>;
+      case 'paused': return <span className="bg-yellow-400 text-black px-2 py-0.5 text-xs font-black uppercase border border-black">Paused</span>;
+      case 'ended': return <span className="bg-gray-400 text-white px-2 py-0.5 text-xs font-black uppercase border border-black">Ended</span>;
     }
   };
 
   return (
-    <div className="min-h-screen bg-yellow-50 p-4 md:p-8">
-      <div className="max-w-4xl mx-auto space-y-8">
-        {/* Header */}
-        <h1 className="text-3xl font-black uppercase border-4 border-black bg-white p-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] text-center">
-          게임 세션 관리
-        </h1>
-
-        {/* Create Session Form */}
-        <div className="border-4 border-black bg-white p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-          <h2 className="text-xl font-black mb-4 border-b-4 border-black pb-2">
-            새 게임 만들기
-          </h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block font-black text-sm mb-1">세션 이름</label>
-              <input
-                type="text"
-                value={sessionName}
-                onChange={(e) => setSessionName(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="세션 이름 입력"
-                className="w-full border-4 border-black p-3 font-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block font-black text-sm mb-1">
-                팀 수: {teamCount}
-              </label>
-              <input
-                type="range"
-                min={2}
-                max={15}
-                value={teamCount}
-                onChange={(e) => setTeamCount(Number(e.target.value))}
-                className="w-full accent-black"
-              />
-              <div className="flex justify-between text-xs font-black text-gray-500">
-                <span>2</span>
-                <span>15</span>
-              </div>
-            </div>
-
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={singlePieceMode}
-                onChange={(e) => setSinglePieceMode(e.target.checked)}
-                className="w-5 h-5 border-4 border-black accent-black"
-              />
-              <span className="font-black">공통 말 모드</span>
-            </label>
-
-            <button
-              onClick={handleCreate}
-              disabled={!sessionName.trim()}
-              className="w-full bg-blue-500 text-white font-black text-lg py-3 px-6 border-4 border-black hover:bg-blue-600 active:translate-x-1 active:translate-y-1 active:shadow-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              세션 생성
-            </button>
+    <div className="min-h-screen bg-gray-100 p-4 md:p-8 font-sans">
+      <div className="max-w-7xl mx-auto">
+        <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-end border-b-4 border-black pb-4">
+          <div>
+            <h1 className="text-4xl font-black italic uppercase text-blue-900">Admin Dashboard</h1>
+            <p className="font-bold text-gray-500">커스텀 교육 세션 관리자 (JSON 업로드)</p>
           </div>
-        </div>
+          <div className="mt-4 md:mt-0 bg-white border-2 border-black p-2 shadow-hard-sm">
+             <span className="font-bold text-sm">진행 중인 세션: {sessions.filter(s => s.status === 'active').length}개</span>
+          </div>
+        </header>
 
-        {/* Session List */}
-        <div className="border-4 border-black bg-white p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-          <h2 className="text-xl font-black mb-4 border-b-4 border-black pb-2">
-            기존 세션 목록
-          </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* Left Column: Create Session */}
+          <div className="lg:col-span-1">
+            <div className="bg-white border-4 border-black p-6 shadow-hard sticky top-8">
+              <h2 className="text-2xl font-black uppercase mb-6 flex items-center gap-2">
+                <Plus className="bg-black text-white p-1 rounded-sm" size={28} /> 
+                세션 생성
+              </h2>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block font-bold mb-1 text-sm uppercase">세션 이름</label>
+                  <input 
+                    type="text" 
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="예: 12월 신입사원 교육"
+                    className="w-full p-3 border-4 border-black font-bold focus:bg-yellow-50 focus:outline-none"
+                  />
+                </div>
 
-          {sessions.length === 0 ? (
-            <p className="text-gray-500 font-black text-center py-8">
-              생성된 세션이 없습니다.
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {sessions.map((session) => (
-                <div
-                  key={session.id}
-                  className="border-4 border-black p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
-                >
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-black text-lg truncate">{session.name}</h3>
-                    <div className="flex items-center gap-3 mt-1 flex-wrap">
-                      <span
-                        className={`inline-block px-3 py-1 border-2 border-black font-black text-xs ${statusColors[session.status]}`}
-                      >
-                        {statusLabels[session.status]}
-                      </span>
-                      <span className="font-black text-sm text-gray-600">
-                        팀 {session.teamCount}개
-                      </span>
-                      <span className="font-black text-xs text-gray-400">
-                        코드: {session.accessCode}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => onEnterSession(session)}
-                      className="bg-green-400 text-black font-black py-2 px-4 border-4 border-black hover:bg-green-500 active:translate-x-1 active:translate-y-1 active:shadow-none shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition-all text-sm"
-                    >
-                      입장
-                    </button>
-                    <button
-                      onClick={() => onDeleteSession(session.id)}
-                      className="bg-red-400 text-black font-black py-2 px-4 border-4 border-black hover:bg-red-500 active:translate-x-1 active:translate-y-1 active:shadow-none shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition-all text-sm"
-                    >
-                      삭제
-                    </button>
+                <div>
+                  <label className="block font-bold mb-1 text-sm uppercase">팀 수 설정 (2~20팀)</label>
+                  <div className="flex items-center gap-4">
+                    <input 
+                      type="range" 
+                      min="2" 
+                      max="20" 
+                      value={newTeamCount}
+                      onChange={(e) => setNewTeamCount(parseInt(e.target.value))}
+                      className="flex-1 h-4 bg-gray-200 rounded-lg appearance-none cursor-pointer border-2 border-black"
+                    />
+                    <span className="w-12 h-12 flex items-center justify-center bg-black text-white font-black text-xl border-2 border-transparent shadow-hard-sm">
+                      {newTeamCount}
+                    </span>
                   </div>
                 </div>
-              ))}
+
+                <div>
+                  <label className="block font-bold mb-2 text-sm uppercase">말 설정</label>
+                  <label className="flex items-center gap-3 cursor-pointer p-3 border-4 border-black bg-gray-50 hover:bg-yellow-50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={singlePieceMode}
+                      onChange={(e) => setSinglePieceMode(e.target.checked)}
+                      className="w-5 h-5 accent-blue-900 cursor-pointer"
+                    />
+                    <div>
+                      <span className="font-black text-sm">공통 말 1개 모드</span>
+                      <p className="text-xs text-gray-500 font-bold mt-0.5">
+                        모든 팀이 하나의 말로 이동하고, 도착한 칸의 문제를 동시에 풀어 최고 점수 팀이 칸을 차지합니다.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+
+                <div className="pt-4">
+                  <button
+                    onClick={handleCreate}
+                    disabled={isCreating}
+                    className={`w-full py-4 font-black text-xl uppercase border-4 border-black shadow-hard transition-all ${
+                      isCreating
+                        ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                        : 'bg-blue-900 text-white hover:bg-blue-800 hover:translate-y-1 hover:shadow-hard-sm'
+                    }`}
+                  >
+                    {isCreating ? '생성 중...' : '세션 생성하기'}
+                  </button>
+                </div>
+              </div>
             </div>
-          )}
+          </div>
+
+          {/* Right Column: Session List */}
+          <div className="lg:col-span-2 space-y-6">
+            <h2 className="text-2xl font-black uppercase mb-4">세션 목록 ({sessions.length})</h2>
+            
+            {sessions.length === 0 ? (
+              <div className="bg-gray-200 border-4 border-dashed border-gray-400 p-12 text-center">
+                <p className="text-xl font-bold text-gray-500">생성된 세션이 없습니다.</p>
+                <p className="text-gray-400 mt-2">좌측 패널에서 새로운 세션을 생성해주세요.</p>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {sessions.map((session) => (
+                  <div key={session.id} className="bg-white border-4 border-black p-4 shadow-sm hover:shadow-hard transition-shadow group">
+                    <div className="flex flex-col md:flex-row justify-between gap-4">
+                      
+                      {/* Session Info */}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          {getStatusBadge(session.status)}
+                          <h3 className="text-xl font-black">{session.name}</h3>
+                        </div>
+                        <div className="text-sm font-bold text-gray-600 grid grid-cols-2 gap-x-4 gap-y-1">
+                          <span>• 모드: {session.version}</span>
+                          <span>• 팀: {session.teams.length}개 {session.singlePieceMode ? '(공통 말)' : ''}</span>
+                          <span>• 코드: <span className="font-mono bg-gray-200 px-1 border border-gray-400">{session.accessCode}</span></span>
+                          <span>• 생성: {new Date(session.createdAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+
+                      {/* Controls */}
+                      <div className="flex items-center gap-2 border-t md:border-t-0 border-gray-200 pt-4 md:pt-0">
+                        {session.status === 'active' ? (
+                          <button 
+                            onClick={() => onUpdateStatus(session.id, 'paused')}
+                            className="p-2 border-2 border-black bg-yellow-400 hover:bg-yellow-500 shadow-hard-sm"
+                            title="일시정지"
+                          >
+                            <Pause size={20} fill="currentColor" />
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={() => onUpdateStatus(session.id, 'active')}
+                            className="p-2 border-2 border-black bg-green-500 text-white hover:bg-green-600 shadow-hard-sm"
+                            title="활성화"
+                          >
+                            <Play size={20} fill="currentColor" />
+                          </button>
+                        )}
+
+                        <button 
+                          onClick={() => setInviteModalSession(session)}
+                          disabled={session.status !== 'active'}
+                          className={`p-2 border-2 border-black bg-white hover:bg-gray-100 shadow-hard-sm ${session.status !== 'active' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          title="초대 링크/QR"
+                        >
+                          <QrCode size={20} />
+                        </button>
+
+                        <button 
+                          onClick={() => onEnterSession(session)}
+                          className="px-4 py-2 border-2 border-black bg-blue-900 text-white font-bold shadow-hard-sm hover:bg-blue-800 flex items-center gap-2"
+                        >
+                          <MonitorPlay size={18} />
+                          입장/모니터링
+                        </button>
+
+                        <div className="w-px h-8 bg-gray-300 mx-2"></div>
+
+                        <button 
+                          onClick={() => {
+                            if(window.confirm('정말 이 세션을 삭제하시겠습니까?')) onDeleteSession(session.id);
+                          }}
+                          className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded transition-colors"
+                          title="삭제"
+                        >
+                          <Trash2 size={20} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Invite Modal */}
+      {inviteModalSession && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white max-w-lg w-full border-4 border-black shadow-[10px_10px_0_0_#fff] p-6 relative animate-in fade-in zoom-in duration-200">
+            <button 
+              onClick={() => setInviteModalSession(null)}
+              className="absolute top-4 right-4 hover:bg-gray-100 p-1 rounded-full border-2 border-transparent hover:border-black transition-all"
+            >
+              <X size={24} />
+            </button>
+            
+            <h2 className="text-2xl font-black uppercase text-center mb-2">참가자 초대</h2>
+            <p className="text-center text-gray-500 font-bold mb-6">{inviteModalSession.name}</p>
+
+            <div className="bg-gray-100 border-4 border-black p-8 mb-6 flex flex-col items-center justify-center">
+               {/* 실제 QR 코드 */}
+               <div className="bg-white p-4 border-2 border-black mb-4">
+                 <QRCodeSVG
+                   value={getJoinUrl(inviteModalSession.accessCode)}
+                   size={200}
+                   level="H"
+                   includeMargin={true}
+                 />
+               </div>
+
+               <p className="font-bold text-sm text-gray-500 mb-2 uppercase">Access Code</p>
+               <div className="text-5xl font-black tracking-widest font-mono bg-white border-2 border-black px-6 py-2 shadow-hard-sm">
+                 {inviteModalSession.accessCode}
+               </div>
+            </div>
+
+            <div className="space-y-3">
+              <button
+                 className={`w-full py-3 border-4 border-black font-black uppercase shadow-hard hover:translate-y-1 hover:shadow-none transition-all flex items-center justify-center gap-2 ${linkCopied ? 'bg-green-400' : 'bg-yellow-400'}`}
+                 onClick={() => handleCopyLink(inviteModalSession.accessCode)}
+              >
+                {linkCopied ? (
+                  <><Check size={20} /> 복사 완료!</>
+                ) : (
+                  <><Copy size={20} /> 초대 링크 복사</>
+                )}
+              </button>
+              <p className="text-xs text-center font-bold text-gray-500">
+                참가자들에게 위 QR코드 또는 접속 코드를 공유하세요.
+              </p>
+              <p className="text-xs text-center font-mono text-gray-400 break-all">
+                {getJoinUrl(inviteModalSession.accessCode)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

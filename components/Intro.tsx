@@ -1,129 +1,187 @@
 import React, { useState, useEffect } from 'react';
+import { Loader2 } from 'lucide-react';
 
 interface IntroProps {
   onAdminLogin: () => void;
   onUserJoin: (accessCode: string) => void;
   initialAccessCode?: string;
-  isLoading: boolean;
-  joinError: string;
+  isLoading?: boolean;
+  joinError?: string;
 }
 
 const Intro: React.FC<IntroProps> = ({
   onAdminLogin,
   onUserJoin,
-  initialAccessCode,
-  isLoading,
-  joinError,
+  initialAccessCode = '',
+  isLoading = false,
+  joinError = ''
 }) => {
-  const [accessCode, setAccessCode] = useState(initialAccessCode || '');
+  const [mode, setMode] = useState<'main' | 'admin' | 'join'>('main');
+  const [password, setPassword] = useState('');
+  const [accessCode, setAccessCode] = useState(initialAccessCode);
+  const [error, setError] = useState('');
 
+  // URL에서 코드가 전달되면 자동으로 참가 모드로 전환
   useEffect(() => {
     if (initialAccessCode) {
       setAccessCode(initialAccessCode);
+      setMode('join');
     }
   }, [initialAccessCode]);
 
-  const handleJoin = () => {
-    if (accessCode.trim().length === 6) {
-      onUserJoin(accessCode.trim());
+  // 외부 에러 표시
+  useEffect(() => {
+    if (joinError) {
+      setError(joinError);
+    }
+  }, [joinError]);
+
+  const handleAdminSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password === '6749467') {
+      onAdminLogin();
+    } else {
+      setError('비밀번호가 일치하지 않습니다.');
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleJoin();
+  const handleJoinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accessCode.trim()) {
+      setError('접속 코드를 입력해주세요.');
+      return;
     }
+    if (accessCode.length !== 6 || !/^\d+$/.test(accessCode)) {
+      setError('6자리 숫자 코드를 입력해주세요.');
+      return;
+    }
+    setError('');
+    onUserJoin(accessCode);
   };
 
   return (
-    <div className="min-h-screen bg-yellow-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-8">
-        {/* Title */}
-        <div className="text-center">
-          <h1 className="text-4xl font-black uppercase tracking-tight border-4 border-black bg-white p-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-            브루마블 리더십 보드게임
-          </h1>
-          <p className="mt-4 text-lg font-black text-gray-700">
-            Blue Marble Leadership Board Game
-          </p>
-        </div>
+    <div
+      className="min-h-screen flex flex-col items-center justify-center p-4"
+      style={{
+        backgroundImage: 'url(https://i.ibb.co/3yhsLhWD/Infographic-5.png)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        backgroundColor: '#1e3a5f',
+      }}
+    >
+      <div className="max-w-md w-full bg-white border-4 border-black shadow-[8px_8px_0_0_#000] p-8">
+        <h1 className="text-4xl md:text-5xl font-black text-center mb-2 break-keep leading-tight">
+          Blue Marble<br/>Gamification
+        </h1>
+        <p className="text-center text-gray-500 font-bold mb-8 text-sm">
+          핵심가치 교육 보드게임
+        </p>
 
-        {/* Admin Section */}
-        <div className="border-4 border-black bg-white p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-          <h2 className="text-xl font-black mb-4 border-b-4 border-black pb-2">
-            관리자
-          </h2>
-          <button
-            onClick={onAdminLogin}
-            disabled={isLoading}
-            className="w-full bg-black text-white font-black text-lg py-3 px-6 border-4 border-black hover:bg-gray-800 active:translate-x-1 active:translate-y-1 active:shadow-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            관리자 로그인
-          </button>
-        </div>
-
-        {/* Participant Section */}
-        <div className="border-4 border-black bg-white p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-          <h2 className="text-xl font-black mb-4 border-b-4 border-black pb-2">
-            참여자
-          </h2>
+        {mode === 'main' && (
           <div className="space-y-4">
-            <div>
-              <label className="block font-black text-sm mb-1">
-                참여 코드 (6자리)
-              </label>
-              <input
-                type="text"
-                maxLength={6}
-                value={accessCode}
-                onChange={(e) => setAccessCode(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))}
-                onKeyDown={handleKeyDown}
-                placeholder="참여 코드 입력"
-                className="w-full border-4 border-black p-3 font-black text-center text-2xl tracking-widest uppercase focus:outline-none focus:ring-2 focus:ring-blue-500"
-                disabled={isLoading}
-              />
-            </div>
-
-            {joinError && (
-              <p className="text-red-600 font-black text-sm border-2 border-red-600 bg-red-50 p-2">
-                {joinError}
-              </p>
-            )}
-
             <button
-              onClick={handleJoin}
-              disabled={isLoading || accessCode.trim().length !== 6}
-              className="w-full bg-blue-500 text-white font-black text-lg py-3 px-6 border-4 border-black hover:bg-blue-600 active:translate-x-1 active:translate-y-1 active:shadow-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => setMode('join')}
+              className="w-full py-4 bg-yellow-400 border-4 border-black text-xl font-black shadow-hard hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[6px_6px_0_0_#000] transition-all"
             >
-              {isLoading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg
-                    className="animate-spin h-5 w-5"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
-                  </svg>
-                  접속 중...
-                </span>
-              ) : (
-                '참여하기'
-              )}
+              게임 참여 (참가자용)
+            </button>
+            <button
+              onClick={() => setMode('admin')}
+              className="w-full py-4 bg-gray-200 border-4 border-black text-xl font-black shadow-hard hover:bg-gray-300 transition-all"
+            >
+              관리자 로그인
             </button>
           </div>
+        )}
+
+        {mode === 'admin' && (
+          <form onSubmit={handleAdminSubmit} className="space-y-4">
+            <div>
+              <label className="block font-bold mb-2 uppercase">관리자 비밀번호</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => { setPassword(e.target.value); setError(''); }}
+                className="w-full p-3 border-4 border-black font-mono text-xl focus:outline-none focus:bg-yellow-50"
+                placeholder="비밀번호 입력"
+                autoFocus
+              />
+              {error && <p className="text-red-600 font-bold mt-2">{error}</p>}
+            </div>
+            <div className="flex gap-4">
+              <button
+                type="button"
+                onClick={() => { setMode('main'); setError(''); setPassword(''); }}
+                className="flex-1 py-3 bg-gray-200 border-4 border-black font-bold"
+              >
+                뒤로가기
+              </button>
+              <button
+                type="submit"
+                className="flex-1 py-3 bg-black text-white border-4 border-black font-bold hover:bg-gray-800"
+              >
+                로그인
+              </button>
+            </div>
+          </form>
+        )}
+
+        {mode === 'join' && (
+          <form onSubmit={handleJoinSubmit} className="space-y-4">
+            <div>
+              <label className="block font-bold mb-2 uppercase">접속 코드 입력</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                value={accessCode}
+                onChange={(e) => { setAccessCode(e.target.value.replace(/\D/g, '')); setError(''); }}
+                className="w-full p-4 border-4 border-black font-mono text-3xl text-center tracking-[0.5em] focus:outline-none focus:bg-yellow-50"
+                placeholder="000000"
+                autoFocus
+                disabled={isLoading}
+              />
+              <p className="text-sm text-gray-500 mt-2 text-center">
+                관리자에게 전달받은 6자리 코드를 입력하세요
+              </p>
+              {error && <p className="text-red-600 font-bold mt-2 text-center">{error}</p>}
+            </div>
+            <div className="flex gap-4">
+              <button
+                type="button"
+                onClick={() => { setMode('main'); setError(''); setAccessCode(''); }}
+                className="flex-1 py-3 bg-gray-200 border-4 border-black font-bold"
+                disabled={isLoading}
+              >
+                뒤로가기
+              </button>
+              <button
+                type="submit"
+                disabled={isLoading || accessCode.length !== 6}
+                className="flex-1 py-3 bg-yellow-400 border-4 border-black font-bold hover:bg-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="animate-spin" size={20} />
+                    접속 중...
+                  </>
+                ) : (
+                  '게임 참여'
+                )}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* JJ Creative 교육연구소 로고 */}
+        <div className="mt-6 flex justify-center">
+          <img
+            src="https://i.ibb.co/wF52n01n/jj-png-Artboard-5.png"
+            alt="JJ CREATIVE 교육연구소"
+            className="h-12 object-contain"
+          />
         </div>
       </div>
     </div>

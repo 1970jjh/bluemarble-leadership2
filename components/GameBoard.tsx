@@ -1,278 +1,270 @@
 import React from 'react';
-import { Team, BoardSquare, GameCard, TeamColor } from '../types';
-import { BOARD_SQUARES } from '../constants';
+import {
+  BOARD_SQUARES,
+  CUSTOM_BOARD_NAMES,
+} from '../constants';
+import { BoardSquare, SquareType, Team, TeamColor, GameVersion, GameCard } from '../types';
 
-// ============================================================
-// Multiplier Squares
-// ============================================================
-
-export const DOUBLE_SQUARES = [8, 24]; // x2 multiplier squares
-export const TRIPLE_SQUARES = [16]; // x3 multiplier squares
-
-export const getSquareMultiplier = (squareIndex: number): number => {
-  if (TRIPLE_SQUARES.includes(squareIndex)) return 3;
-  if (DOUBLE_SQUARES.includes(squareIndex)) return 2;
-  return 1;
-};
-
-// ============================================================
-// Color mapping
-// ============================================================
-
-const TEAM_COLOR_CSS: Record<string, string> = {
-  Red: '#ef4444',
-  Blue: '#3b82f6',
-  Green: '#22c55e',
-  Yellow: '#eab308',
-  Purple: '#a855f7',
-  Orange: '#f97316',
-  Pink: '#ec4899',
-  Teal: '#14b8a6',
-  Cyan: '#06b6d4',
-  Lime: '#84cc16',
-  Indigo: '#6366f1',
-  Amber: '#f59e0b',
-  Emerald: '#10b981',
-  Slate: '#64748b',
-  Rose: '#f43f5e',
-};
-
-function getColorCSS(color: TeamColor | string): string {
-  return TEAM_COLOR_CSS[color] || '#6b7280';
+// 영토 소유권 정보
+interface TerritoryInfo {
+  ownerTeamId: string;
+  ownerTeamName: string;
+  ownerTeamColor: string;
+  acquiredAt: number;
 }
-
-// ============================================================
-// Props
-// ============================================================
 
 interface GameBoardProps {
   teams: Team[];
-  onSquareClick: (square: BoardSquare) => void;
+  onSquareClick: (index: number) => void;
   gameMode: string;
-  customBoardImage?: string;
-  customCards: GameCard[];
-  territories: {
-    [squareIndex: string]: {
-      ownerTeamId: string;
-      ownerTeamName: string;
-      ownerTeamColor: string;
-      acquiredAt: number;
-    };
-  };
-  singlePieceMode?: boolean;
+  customBoardImage?: string;  // 커스텀 모드용 배경 이미지 URL
+  customCards?: GameCard[];   // 커스텀 카드 (보드 이름 표시용)
+  territories?: { [squareIndex: string]: TerritoryInfo };  // 영토 소유권 정보
+  singlePieceMode?: boolean;  // 공통 말 모드 (말 1개만 표시)
 }
 
-// ============================================================
-// Board layout helpers
-// ============================================================
+// 팀별 캐릭터 이미지 (8개)
+const CHARACTER_IMAGES = [
+  'https://i.ibb.co/RGcCcwBf/1.png',  // 1조
+  'https://i.ibb.co/MkKQpP8W/2.png',  // 2조
+  'https://i.ibb.co/KpF32MRT/3.png',  // 3조
+  'https://i.ibb.co/5XvVbLmQ/4.png',  // 4조
+  'https://i.ibb.co/Y43M160r/5.png',  // 5조
+  'https://i.ibb.co/hRZ7RJZ4/6.png',  // 6조
+  'https://i.ibb.co/BH7hrmDZ/7.png',  // 7조
+  'https://i.ibb.co/kgqKfW7Q/8.png',  // 8조
+];
 
-// Bottom row (left to right): 0-8
-// Right column (bottom to top): 9-15
-// Top row (right to left): 16-23
-// Left column (top to bottom): 24-31
+// 특수 칸 정의 (export for use in other components)
+export const DOUBLE_SQUARES = [8, 16, 24];  // x2 칸 (노란색)
+export const TRIPLE_SQUARES = [12, 28];     // x3 칸 (빨간색)
 
-function getSquarePosition(
-  index: number
-): { row: number; col: number; side: 'bottom' | 'right' | 'top' | 'left' } {
-  if (index >= 0 && index <= 8) {
-    return { row: 8, col: index, side: 'bottom' };
-  } else if (index >= 9 && index <= 15) {
-    return { row: 8 - (index - 8), col: 9, side: 'right' };
-  } else if (index >= 16 && index <= 23) {
-    return { row: 0, col: 9 - (index - 15), side: 'top' };
-  } else {
-    return { row: index - 23, col: 0, side: 'left' };
-  }
-}
-
-// ============================================================
-// Square Component
-// ============================================================
-
-interface SquareProps {
-  square: BoardSquare;
-  teamsOnSquare: Team[];
-  territory?: {
-    ownerTeamId: string;
-    ownerTeamName: string;
-    ownerTeamColor: string;
-    acquiredAt: number;
-  };
-  multiplier: number;
-  onClick: () => void;
-  side: 'bottom' | 'right' | 'top' | 'left';
-}
-
-const Square: React.FC<SquareProps> = ({
-  square,
-  teamsOnSquare,
-  territory,
-  multiplier,
-  onClick,
-  side,
-}) => {
-  const isCorner =
-    (side === 'bottom' && (square.index === 0 || square.index === 8)) ||
-    (side === 'top' && (square.index === 16 || square.index === 23)) ||
-    (side === 'right' && square.index === 15) ||
-    (side === 'left' && square.index === 24);
-
-  const territoryBorderColor = territory
-    ? getColorCSS(territory.ownerTeamColor)
-    : undefined;
-
-  // Extract short name (Korean part before parentheses)
-  const shortName = square.name.split('(')[0].trim();
-
-  return (
-    <div
-      onClick={onClick}
-      className="relative bg-white border-2 border-black cursor-pointer hover:bg-yellow-50 transition-colors flex flex-col items-center justify-center overflow-hidden"
-      style={{
-        borderColor: territoryBorderColor || 'black',
-        borderWidth: territory ? '3px' : '2px',
-        minWidth: isCorner ? '72px' : side === 'top' || side === 'bottom' ? '64px' : '72px',
-        minHeight: isCorner ? '72px' : side === 'left' || side === 'right' ? '52px' : '72px',
-      }}
-      title={square.description || square.name}
-    >
-      {/* Multiplier badge */}
-      {multiplier > 1 && (
-        <div className="absolute top-0 right-0 bg-red-500 text-white text-[9px] font-black px-1 leading-tight z-10">
-          x{multiplier}
-        </div>
-      )}
-
-      {/* Square index */}
-      <div className="text-[8px] text-gray-400 font-bold leading-none">{square.index}</div>
-
-      {/* Square name */}
-      <div className="text-[9px] font-black text-center leading-tight px-0.5 truncate w-full">
-        {shortName}
-      </div>
-
-      {/* Territory owner indicator */}
-      {territory && (
-        <div
-          className="text-[7px] font-bold leading-none truncate w-full text-center"
-          style={{ color: getColorCSS(territory.ownerTeamColor) }}
-        >
-          {territory.ownerTeamName}
-        </div>
-      )}
-
-      {/* Team pieces */}
-      {teamsOnSquare.length > 0 && (
-        <div className="flex flex-wrap gap-0.5 justify-center mt-0.5">
-          {teamsOnSquare.map((team) => (
-            <div
-              key={team.id}
-              className="w-3 h-3 rounded-full border border-black shadow-sm"
-              style={{ backgroundColor: getColorCSS(team.color) }}
-              title={team.name}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
+// 특수 칸 배율 가져오기 유틸리티 함수
+export const getSquareMultiplier = (index: number): number => {
+  if (TRIPLE_SQUARES.includes(index)) return 3;
+  if (DOUBLE_SQUARES.includes(index)) return 2;
+  return 1;
 };
 
-// ============================================================
-// GameBoard Component
-// ============================================================
+const GameBoard: React.FC<GameBoardProps> = ({ teams, onSquareClick, gameMode, customBoardImage, customCards, territories = {}, singlePieceMode = false }) => {
+  // 팀 색상을 CSS 색상으로 변환
+  const getTeamColorCSS = (color: string): string => {
+    const colorMap: { [key: string]: string } = {
+      'Red': '#ef4444',
+      'Blue': '#3b82f6',
+      'Green': '#22c55e',
+      'Yellow': '#eab308',
+      'Purple': '#a855f7',
+      'Orange': '#f97316',
+      'Pink': '#ec4899',
+      'Teal': '#14b8a6',
+      'Cyan': '#06b6d4',
+      'Lime': '#84cc16',
+      'Indigo': '#6366f1',
+      'Amber': '#f59e0b',
+      'Emerald': '#10b981',
+      'Slate': '#64748b',
+      'Rose': '#f43f5e'
+    };
+    return colorMap[color] || '#6b7280';
+  };
 
-const GameBoard: React.FC<GameBoardProps> = ({
-  teams,
-  onSquareClick,
-  gameMode,
-  customBoardImage,
-  customCards,
-  territories,
-  singlePieceMode,
-}) => {
-  // Build a map of square index -> teams at that position
-  const teamsAtPosition: Record<number, Team[]> = {};
-  teams.forEach((team) => {
-    if (!teamsAtPosition[team.position]) {
-      teamsAtPosition[team.position] = [];
+  // 특수 칸 여부 확인
+  const isDoubleSquare = (index: number) => DOUBLE_SQUARES.includes(index);
+  const isTripleSquare = (index: number) => TRIPLE_SQUARES.includes(index);
+  const getMultiplier = (index: number) => {
+    if (isTripleSquare(index)) return 3;
+    if (isDoubleSquare(index)) return 2;
+    return 1;
+  };
+  // 팀 번호에 해당하는 캐릭터 이미지 가져오기 (9조 이상은 순환)
+  const getCharacterImage = (teamNumber: number): string => {
+    const index = (teamNumber - 1) % CHARACTER_IMAGES.length;
+    return CHARACTER_IMAGES[index];
+  };
+
+  // 보드 칸 이름 가져오기 (커스텀 모드 전용)
+  const getSquareDisplayName = (square: BoardSquare): string => {
+    // customCards에서 해당 boardIndex의 카드 제목 찾기
+    if (customCards && customCards.length > 0) {
+      const customCard = customCards.find((c: any) => c.boardIndex === square.index);
+      if (customCard) {
+        return customCard.title || CUSTOM_BOARD_NAMES[square.index] || `카드 ${square.index}`;
+      }
     }
-    teamsAtPosition[team.position].push(team);
-  });
+    // customCards에 없으면 CUSTOM_BOARD_NAMES 사용
+    return CUSTOM_BOARD_NAMES[square.index] || square.name.split('(')[0];
+  };
 
-  // Build square arrays for each side
-  const bottomSquares = BOARD_SQUARES.filter((s) => s.index >= 0 && s.index <= 8);
-  const rightSquares = BOARD_SQUARES.filter((s) => s.index >= 9 && s.index <= 15);
-  const topSquares = BOARD_SQUARES.filter((s) => s.index >= 16 && s.index <= 23).reverse(); // right to left
-  const leftSquares = BOARD_SQUARES.filter((s) => s.index >= 24 && s.index <= 31);
+  const getGridStyle = (index: number) => {
+    let row = 0;
+    let col = 0;
 
-  const renderSquare = (square: BoardSquare, side: 'bottom' | 'right' | 'top' | 'left') => (
-    <Square
-      key={square.index}
-      square={square}
-      teamsOnSquare={teamsAtPosition[square.index] || []}
-      territory={territories[String(square.index)]}
-      multiplier={getSquareMultiplier(square.index)}
-      onClick={() => onSquareClick(square)}
-      side={side}
-    />
-  );
+    if (index >= 0 && index <= 8) {
+      row = 9;
+      col = 9 - index;
+    } else if (index >= 9 && index <= 15) {
+      col = 1;
+      row = 9 - (index - 8);
+    } else if (index >= 16 && index <= 24) {
+      row = 1;
+      col = 1 + (index - 16);
+    } else if (index >= 25 && index <= 31) {
+      col = 9;
+      row = 1 + (index - 24);
+    }
+
+    return {
+      gridRow: row,
+      gridColumn: col,
+    };
+  };
+
+  // 커스텀 모드 기본 배경 이미지
+  const defaultBgImage = 'https://i.ibb.co/YF5PkBKv/Infographic-5.png';
+
+  // 배경 이미지 선택 (커스텀 이미지 우선)
+  const currentBgImage = customBoardImage || defaultBgImage;
 
   return (
-    <div className="relative w-full max-w-[820px]">
-      {/* Title */}
-      <div className="text-center mb-2">
-        <h2 className="text-lg font-black tracking-tight">
-          {gameMode}
-        </h2>
-        {singlePieceMode && (
-          <span className="text-xs font-bold text-purple-600 border border-purple-400 px-2 py-0.5 rounded">
-            공통 말 모드
-          </span>
-        )}
-      </div>
+    <div className="flex flex-col items-center w-full max-w-[calc(100vh-120px)]">
+      {/* 게임판 */}
+      <div className="w-full aspect-square bg-[#e8e8e8] border-[12px] border-black p-4 shadow-hard rounded-xl relative overflow-hidden">
+        <div className="w-full h-full grid grid-cols-9 grid-rows-9 gap-1.5">
 
-      {/* Board container */}
-      <div
-        className="relative border-4 border-black bg-emerald-50 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]"
-        style={{
-          backgroundImage: customBoardImage ? `url(${customBoardImage})` : undefined,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
-      >
-        {/* Top row (right to left, displayed left to right via reverse) */}
-        <div className="flex justify-between">
-          {/* Top-left corner (square 23 area) */}
-          {topSquares.map((s) => renderSquare(s, 'top'))}
-        </div>
-
-        {/* Middle section: left column + center + right column */}
-        <div className="flex">
-          {/* Left column (top to bottom) */}
-          <div className="flex flex-col">
-            {leftSquares.map((s) => renderSquare(s, 'left'))}
+          {/* Center Area - 배경 이미지만 표시 */}
+          <div className="col-start-2 col-end-9 row-start-2 row-end-9 bg-white border-4 border-black relative overflow-hidden shadow-inner">
+             {/* Dynamic Background Image - 원본 이미지 그대로 표시 */}
+             <div className="absolute inset-0">
+               <img
+                 src={currentBgImage}
+                 alt="Board Background"
+                 className="w-full h-full object-cover"
+                 onError={(e) => {
+                   console.warn("Background image failed to load. Check URL.");
+                   e.currentTarget.style.display = 'none';
+                 }}
+               />
+             </div>
           </div>
 
-          {/* Center area */}
-          <div className="flex-1 flex items-center justify-center p-4 min-h-[280px]">
-            {!customBoardImage && (
-              <div className="text-center opacity-30">
-                <div className="text-4xl font-black tracking-tighter">BLUE MARBLE</div>
-                <div className="text-sm font-bold mt-1">Leadership Board Game</div>
+        {/* Board Squares */}
+        {BOARD_SQUARES.map((square) => {
+          // 영토 소유권 확인
+          const territory = territories[square.index.toString()];
+          const hasOwner = !!territory;
+          const ownerColor = territory ? getTeamColorCSS(territory.ownerTeamColor) : undefined;
+
+          return (
+          <div
+            key={square.index}
+            style={{
+              ...getGridStyle(square.index),
+              ...(hasOwner ? { borderColor: ownerColor, borderWidth: '4px' } : {})
+            }}
+            onClick={() => onSquareClick(square.index)}
+            className={`relative border-[3px] ${hasOwner ? '' : 'border-black'} flex flex-col shadow-[2px_2px_0_0_rgba(0,0,0,0.3)] transition-all hover:scale-105 hover:z-50 hover:shadow-[8px_8px_0_0_rgba(0,0,0,1)] cursor-pointer bg-white group overflow-hidden`}
+          >
+            {/* Square Styling */}
+            {square.type === SquareType.Start ? (
+              <div className="w-full h-full flex flex-col items-center justify-center p-1 text-center font-black leading-tight bg-green-200">
+                <span className="text-xs md:text-sm uppercase tracking-tighter mb-1">START</span>
+                <span className="text-sm md:text-lg">{getSquareDisplayName(square)}</span>
               </div>
+            ) : (
+              /* City/Competency Card Styling - 커스텀 모드 */
+              <>
+                <div
+                  className="h-[20%] w-full border-b-2 border-black"
+                  style={{ backgroundColor: hasOwner ? ownerColor : '#1f2937' }}
+                >
+                  {/* 영토 소유자 표시 */}
+                  {hasOwner && (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <span className="text-[8px] md:text-[10px] text-white font-bold truncate px-1">
+                        🏠 {territory?.ownerTeamName}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div className={`flex-1 flex flex-col items-center justify-center p-1 text-center relative ${
+                  isTripleSquare(square.index) ? 'bg-red-200' :
+                  isDoubleSquare(square.index) ? 'bg-yellow-200' :
+                  'bg-[#fafafa]'
+                }`}>
+                  {/* x2, x3 배지 */}
+                  {(isDoubleSquare(square.index) || isTripleSquare(square.index)) && (
+                    <div className={`absolute top-0 right-0 px-1 py-0.5 text-[8px] md:text-[10px] font-black rounded-bl ${
+                      isTripleSquare(square.index) ? 'bg-red-600 text-white' : 'bg-yellow-500 text-black'
+                    }`}>
+                      x{getMultiplier(square.index)}
+                    </div>
+                  )}
+                  <span className="text-xs md:text-sm font-black text-gray-900 leading-tight break-keep">
+                    {getSquareDisplayName(square)}
+                  </span>
+                </div>
+              </>
             )}
-          </div>
 
-          {/* Right column (bottom to top) */}
-          <div className="flex flex-col-reverse">
-            {rightSquares.map((s) => renderSquare(s, 'right'))}
-          </div>
-        </div>
+            {/* Team Tokens (Character Images with Speech Bubbles) */}
+            <div className="absolute inset-0 pointer-events-none flex flex-wrap items-center justify-center gap-1 p-1">
+              {singlePieceMode ? (
+                // 공통 말 모드: 하나의 공통 말만 표시
+                teams.length > 0 && teams[0].position === square.index && (
+                  <div className="relative z-10 transform hover:scale-125 transition-transform">
+                    {/* Speech Bubble */}
+                    <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-yellow-300 border-2 border-black rounded-full px-1.5 py-0.5 text-[8px] md:text-[10px] font-black whitespace-nowrap shadow-md z-20">
+                      공통
+                      <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[4px] border-r-[4px] border-t-[5px] border-l-transparent border-r-transparent border-t-black"></div>
+                      <div className="absolute -bottom-[3px] left-1/2 -translate-x-1/2 w-0 h-0 border-l-[3px] border-r-[3px] border-t-[4px] border-l-transparent border-r-transparent border-t-yellow-300"></div>
+                    </div>
+                    {/* Shared Character Image */}
+                    <img
+                      src={getCharacterImage(1)}
+                      alt="공통 말"
+                      className="w-10 h-10 md:w-[50px] md:h-[50px] object-contain drop-shadow-lg"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  </div>
+                )
+              ) : (
+                // 일반 모드: 팀별 말 표시
+                teams.filter(t => t.position === square.index).map(team => {
+                  const teamNumber = teams.findIndex(t => t.id === team.id) + 1;
 
-        {/* Bottom row (left to right) */}
-        <div className="flex justify-between">
-          {bottomSquares.map((s) => renderSquare(s, 'bottom'))}
+                  return (
+                    <div
+                      key={team.id}
+                      className="relative z-10 transform hover:scale-125 transition-transform"
+                      title={team.name}
+                    >
+                      {/* Speech Bubble */}
+                      <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-white border-2 border-black rounded-full px-1.5 py-0.5 text-[8px] md:text-[10px] font-black whitespace-nowrap shadow-md z-20">
+                        {teamNumber}조
+                        {/* Speech Bubble Tail */}
+                        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[4px] border-r-[4px] border-t-[5px] border-l-transparent border-r-transparent border-t-black"></div>
+                        <div className="absolute -bottom-[3px] left-1/2 -translate-x-1/2 w-0 h-0 border-l-[3px] border-r-[3px] border-t-[4px] border-l-transparent border-r-transparent border-t-white"></div>
+                      </div>
+                      {/* Character Image */}
+                      <img
+                        src={getCharacterImage(teamNumber)}
+                        alt={`${teamNumber}조`}
+                        className="w-10 h-10 md:w-[50px] md:h-[50px] object-contain drop-shadow-lg"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        );
+        })}
         </div>
       </div>
     </div>
