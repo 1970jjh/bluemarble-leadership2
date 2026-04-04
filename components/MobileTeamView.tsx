@@ -1,23 +1,7 @@
 import React from 'react';
 import { Team, GamePhase, GameCard, Choice } from '../types';
-
-const teamColorMap: Record<string, string> = {
-  Red: 'bg-red-400',
-  Blue: 'bg-blue-400',
-  Green: 'bg-green-400',
-  Yellow: 'bg-yellow-400',
-  Purple: 'bg-purple-400',
-  Orange: 'bg-orange-400',
-  Pink: 'bg-pink-400',
-  Teal: 'bg-teal-400',
-  Cyan: 'bg-cyan-400',
-  Lime: 'bg-lime-400',
-  Indigo: 'bg-indigo-400',
-  Amber: 'bg-amber-400',
-  Emerald: 'bg-emerald-400',
-  Slate: 'bg-slate-400',
-  Rose: 'bg-rose-400',
-};
+import { MapPin, Dice5, Save, CheckCircle, Eye, MessageSquare, LogOut, BookOpen, Trophy } from 'lucide-react';
+import { BOARD_SQUARES, getCharacterImage } from '../constants';
 
 interface MobileTeamViewProps {
   team: Team;
@@ -25,17 +9,28 @@ interface MobileTeamViewProps {
   isMyTurn: boolean;
   gamePhase: GamePhase;
   onLogout?: () => void;
+
+  // Active Turn Props
   activeCard: GameCard | null;
-  activeInput: { choice: Choice | null; reasoning: string };
-  onInputChange: (choice: Choice | null, reason: string) => void;
-  onSubmit: () => void;
-  isTeamSaved: boolean;
-  isSaving: boolean;
-  isGameStarted: boolean;
-  isAiProcessing: boolean;
-  teamNumber: number;
-  onShowRules: () => void;
-  allTeams: Team[];
+  activeInput: { choice: Choice | null, reasoning: string };
+  onInputChange: (choice: Choice, reason: string) => void;
+  onSubmit: (choice?: Choice | null, reasoning?: string) => void;
+  isTeamSaved: boolean;  // 팀이 저장했는지 여부
+  isSaving: boolean;     // 저장 중 여부
+  isGameStarted?: boolean;  // 게임 시작 여부
+  isAiProcessing?: boolean;  // AI 분석 중 여부
+
+  // 관람자 투표 (다른 팀 턴일 때)
+  spectatorVote?: Choice | null;  // 관람자의 현재 선택
+  onSpectatorVote?: (choice: Choice) => void;  // 관람자 투표 핸들러
+  spectatorVotes?: { [optionId: string]: string[] };  // 다른 팀들의 투표 현황
+
+  // 규칙서 보기
+  teamNumber?: number;  // 팀 번호 (캐릭터 이미지용)
+  onShowRules?: () => void;  // 규칙서 보기 핸들러
+
+  // 전체 팀 점수 표시용
+  allTeams?: Team[];
 }
 
 const MobileTeamView: React.FC<MobileTeamViewProps> = ({
@@ -50,223 +45,338 @@ const MobileTeamView: React.FC<MobileTeamViewProps> = ({
   onSubmit,
   isTeamSaved,
   isSaving,
-  isGameStarted,
-  isAiProcessing,
-  teamNumber,
+  isGameStarted = true,
+  isAiProcessing = false,
+  spectatorVote,
+  onSpectatorVote,
+  spectatorVotes = {},
+  teamNumber = 1,
   onShowRules,
-  allTeams,
+  allTeams = []
 }) => {
-  const colorClass = teamColorMap[team.color] || 'bg-gray-400';
-  const sortedTeams = [...allTeams].sort((a, b) => b.score - a.score);
+  // 로컬 상태: 동시 사용자 입력 충돌 방지를 위해 로컬에서 관리
+  const [localChoice, setLocalChoice] = React.useState<Choice | null>(null);
+  const [localReasoning, setLocalReasoning] = React.useState('');
+
+  // activeCard가 변경되면 로컬 상태 초기화 (새 카드가 나왔을 때)
+  React.useEffect(() => {
+    if (activeCard) {
+      // 새 카드가 나오면 로컬 상태를 서버 상태로 초기화 (한 번만)
+      setLocalChoice(activeInput.choice);
+      setLocalReasoning(activeInput.reasoning);
+    } else {
+      // 카드가 없어지면 초기화
+      setLocalChoice(null);
+      setLocalReasoning('');
+    }
+  }, [activeCard?.id]); // activeCard의 id가 변경될 때만 실행
+
+  const currentSquare = BOARD_SQUARES.find(s => s.index === team.position);
+  const isOpenEnded = activeCard && (!activeCard.choices || activeCard.choices.length === 0);
+
+  // 저장 핸들러: 로컬 상태를 서버에 직접 전달 (상태 업데이트 지연 문제 해결)
+  const handleSave = () => {
+    if (localChoice || isOpenEnded) {
+      // 로컬 상태를 서버에 동기화 (UI 표시용)
+      onInputChange(localChoice!, localReasoning);
+      // 로컬 상태를 직접 전달하여 즉시 저장 (한 번 클릭으로 저장)
+      onSubmit(localChoice, localReasoning);
+    }
+  };
+
 
   return (
-    <div className="min-h-screen bg-yellow-50 flex flex-col">
+    <div className="min-h-screen bg-gray-100 p-4 pb-8 flex flex-col font-sans max-w-md mx-auto border-x-4 border-black bg-white">
       {/* Header */}
-      <div
-        className={`${colorClass} border-b-4 border-black p-4 flex items-center justify-between`}
-      >
-        <div className="flex items-center gap-3">
-          <span className="font-black text-lg">
-            {team.name}
-          </span>
-          <span className="text-sm font-black opacity-70">#{teamNumber}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onShowRules}
-            className="bg-white text-black font-black text-xs py-1 px-3 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all"
-          >
-            규칙
-          </button>
-          {onLogout && (
-            <button
-              onClick={onLogout}
-              className="bg-white text-black font-black text-xs py-1 px-3 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all"
-            >
-              나가기
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 p-4 space-y-4 overflow-y-auto">
-        {/* Waiting state */}
-        {!isGameStarted && (
-          <div className="border-4 border-black bg-white p-8 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] text-center">
-            <div className="animate-pulse">
-              <p className="font-black text-xl">게임 시작 대기 중...</p>
-              <p className="font-black text-sm text-gray-500 mt-2">
-                관리자가 게임을 시작할 때까지 기다려주세요
-              </p>
-            </div>
+      <div className={`p-4 border-4 border-black mb-6 shadow-hard bg-${team.color.toLowerCase()}-100`}>
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-xs font-bold uppercase text-gray-500">MY TEAM</h2>
+            <h1 className="text-2xl font-black uppercase">{team.name}</h1>
           </div>
-        )}
-
-        {/* Score Display */}
-        <div className="border-4 border-black bg-white p-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] text-center">
-          <p className="font-black text-sm text-gray-500">현재 점수</p>
-          <p className="font-black text-5xl mt-1">{team.score}</p>
-        </div>
-
-        {/* Active Card & Input */}
-        {isGameStarted && activeCard && isMyTurn && (
-          <div className="border-4 border-black bg-white p-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-4">
-            <div className="border-b-4 border-black pb-3">
-              <h3 className="font-black text-lg">{activeCard.title}</h3>
-              {activeCard.competency && (
-                <span className="inline-block mt-1 px-2 py-0.5 bg-blue-100 border-2 border-black text-xs font-black">
-                  {activeCard.competency}
-                </span>
-              )}
-            </div>
-
-            <p className="font-black text-sm leading-relaxed whitespace-pre-wrap">
-              {activeCard.situation}
-            </p>
-
-            {/* Choice Buttons or Open-ended */}
-            {activeCard.choices && activeCard.choices.length > 0 ? (
-              <div className="space-y-2">
-                <p className="font-black text-xs text-gray-500">선택지</p>
-                {activeCard.choices.map((choice) => (
-                  <button
-                    key={choice.id}
-                    onClick={() => onInputChange(choice, activeInput.reasoning)}
-                    disabled={isTeamSaved}
-                    className={`w-full text-left p-3 border-4 border-black font-black text-sm transition-all ${
-                      activeInput.choice?.id === choice.id
-                        ? 'bg-blue-400 text-white shadow-none translate-x-1 translate-y-1'
-                        : 'bg-white hover:bg-blue-100 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]'
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
-                  >
-                    {choice.text}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div>
-                <p className="font-black text-xs text-gray-500 mb-1">
-                  자유 응답
-                </p>
-                <textarea
-                  value={activeInput.choice?.text || ''}
-                  onChange={(e) =>
-                    onInputChange(
-                      { id: 'open', text: e.target.value },
-                      activeInput.reasoning
-                    )
-                  }
-                  disabled={isTeamSaved}
-                  placeholder="여기에 답변을 입력하세요..."
-                  rows={3}
-                  className="w-full border-4 border-black p-3 font-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed resize-none"
-                />
-              </div>
-            )}
-
-            {/* Reasoning */}
-            <div>
-              <p className="font-black text-xs text-gray-500 mb-1">
-                이유 / 근거
-              </p>
-              <textarea
-                value={activeInput.reasoning}
-                onChange={(e) =>
-                  onInputChange(activeInput.choice, e.target.value)
-                }
-                disabled={isTeamSaved}
-                placeholder="선택한 이유를 설명해주세요..."
-                rows={3}
-                className="w-full border-4 border-black p-3 font-black text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed resize-none"
-              />
-            </div>
-
-            {/* Submit */}
-            {isTeamSaved ? (
-              <div className="bg-green-400 border-4 border-black p-3 text-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                <p className="font-black text-lg">제출 완료!</p>
-              </div>
-            ) : (
+          <div className="flex items-center gap-2">
+            {/* 규칙서 보기 버튼 */}
+            {onShowRules && (
               <button
-                onClick={onSubmit}
-                disabled={
-                  isSaving ||
-                  isAiProcessing ||
-                  (!activeInput.choice && !activeInput.reasoning)
-                }
-                className="w-full bg-black text-white font-black text-lg py-3 px-6 border-4 border-black hover:bg-gray-800 active:translate-x-1 active:translate-y-1 active:shadow-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={onShowRules}
+                className="p-2 bg-blue-100 border-2 border-black hover:bg-blue-200 transition-colors"
+                title="게임 규칙서"
               >
-                {isSaving || isAiProcessing ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg
-                      className="animate-spin h-5 w-5"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                      />
-                    </svg>
-                    {isAiProcessing ? 'AI 분석 중...' : '제출 중...'}
-                  </span>
-                ) : (
-                  '제출하기'
-                )}
+                <BookOpen size={16} />
+              </button>
+            )}
+            {/* 팀 캐릭터 이미지 */}
+            <img
+              src={getCharacterImage(teamNumber)}
+              alt={`Team ${teamNumber}`}
+              className="w-10 h-10 object-contain border-2 border-black rounded-lg bg-white p-0.5"
+            />
+            {onLogout && (
+              <button
+                onClick={() => {
+                  if (window.confirm('정말 로그아웃 하시겠습니까?')) {
+                    onLogout();
+                  }
+                }}
+                className="p-2 bg-gray-200 border-2 border-black hover:bg-red-100 transition-colors"
+                title="로그아웃"
+              >
+                <LogOut size={16} />
               </button>
             )}
           </div>
-        )}
-
-        {/* Turn Info */}
-        {isGameStarted && !isMyTurn && (
-          <div className="border-4 border-black bg-gray-100 p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-center">
-            <p className="font-black text-sm text-gray-600">
-              현재 차례: <span className="text-black">{activeTeamName}</span>
-            </p>
+        </div>
+        {/* 팀원 목록 표시 */}
+        {team.members.length > 0 && (
+          <div className="mt-2 text-sm text-gray-600 truncate">
+            <span className="font-bold">팀원: </span>
+            {team.members.map(m => m.name).join(', ')}
           </div>
         )}
+      </div>
 
-        {/* Leaderboard */}
-        {isGameStarted && (
-          <div className="border-4 border-black bg-white p-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-            <h3 className="font-black text-sm mb-3 border-b-4 border-black pb-2">
-              순위표
-            </h3>
-            <div className="space-y-2">
-              {sortedTeams.map((t, i) => {
-                const tColor = teamColorMap[t.color] || 'bg-gray-200';
-                return (
-                  <div
-                    key={t.id}
-                    className={`flex items-center justify-between p-2 border-2 border-black ${
-                      t.id === team.id ? tColor : 'bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="font-black text-sm w-6">{i + 1}.</span>
-                      <span className="font-black text-sm truncate">
-                        {t.name}
-                      </span>
+      {/* --- DECISION CARD VIEW (Active or Spectator) --- */}
+      {activeCard && (
+        <div className="mb-6 animate-in slide-in-from-bottom-5">
+           {/* Header depends on Turn */}
+           {isMyTurn ? (
+             <div className="bg-black text-white p-3 border-4 border-black mb-2">
+               <h3 className="font-bold text-sm uppercase text-yellow-400">Decision Required</h3>
+               <h2 className="text-xl font-black leading-tight">{activeCard.title}</h2>
+             </div>
+           ) : (
+             <div className="bg-purple-100 text-purple-800 p-3 border-4 border-purple-500 mb-2">
+               <div className="flex items-center gap-2 mb-1">
+                 <Eye size={18} />
+                 <h3 className="font-bold text-xs uppercase">Spectating {activeTeamName}</h3>
+               </div>
+               <h2 className="text-lg font-black leading-tight text-black">{activeCard.title}</h2>
+               <p className="text-xs mt-1 text-purple-600">
+                 💡 나도 선택에 참여할 수 있습니다! (투표만, 점수 반영 없음)
+               </p>
+             </div>
+           )}
+
+           <div className="bg-white border-4 border-black p-4 mb-4">
+             <p className="font-medium text-gray-800 mb-4 text-sm">"{activeCard.situation}"</p>
+
+             {/* AI 분석 중 표시 */}
+             {isAiProcessing && (
+               <div className="bg-purple-100 border-4 border-purple-500 p-4 text-center mb-4 animate-pulse">
+                 <div className="flex items-center justify-center gap-3">
+                   <div className="w-6 h-6 border-3 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+                   <span className="font-bold text-purple-800">(AI 분석 중...)</span>
+                 </div>
+               </div>
+             )}
+
+             {/* 저장 완료 상태 */}
+             {isTeamSaved ? (
+               <div className="bg-green-100 border-4 border-green-600 p-6 text-center">
+                 <CheckCircle className="mx-auto mb-3 text-green-600" size={48} />
+                 <h3 className="text-lg font-black text-green-800 mb-2">저장 완료!</h3>
+                 <p className="text-sm text-green-700 font-medium">
+                   {isAiProcessing ? (
+                     <>AI가 분석 중입니다...<br/>잠시만 기다려주세요.</>
+                   ) : (
+                     <>관리자가 AI 분석을 진행할 예정입니다.<br/>잠시만 기다려주세요.</>
+                   )}
+                 </p>
+               </div>
+             ) : (
+               <>
+                 {/* Choices (Only if not open ended) - 로컬 상태 사용 */}
+                 {!isOpenEnded && activeCard.choices && (
+                    <div className="space-y-2 mb-4">
+                      {activeCard.choices.map(choice => {
+                        // 로컬 상태로 선택 여부 확인 (서버 상태가 아닌 로컬 상태)
+                        const isMyChoice = isMyTurn && localChoice?.id === choice.id;
+                        const isMySpectatorVote = !isMyTurn && spectatorVote?.id === choice.id;
+                        const voterTeams = spectatorVotes[choice.id] || [];
+                        const hasOtherVotes = voterTeams.length > 0;
+
+                        return (
+                          <button
+                            key={choice.id}
+                            onClick={() => {
+                              if (isMyTurn) {
+                                // 로컬 상태만 업데이트 (서버에 즉시 전송하지 않음)
+                                setLocalChoice(choice);
+                              } else if (onSpectatorVote) {
+                                // 관람자 투표
+                                onSpectatorVote(choice);
+                              }
+                            }}
+                            className={`w-full text-left p-3 border-2 font-bold text-sm transition-all relative
+                              ${isMyChoice
+                                  ? 'bg-blue-600 text-white border-black transform -translate-y-1 shadow-md'
+                                  : isMySpectatorVote
+                                    ? 'bg-purple-500 text-white border-purple-700 transform -translate-y-1'
+                                    : 'bg-gray-50 border-gray-300 hover:bg-gray-100'}
+                            `}
+                          >
+                            <div className="flex gap-2 items-start">
+                              <span className={`px-2 ${isMyChoice ? 'bg-white text-blue-600' : 'bg-black text-white'} text-xs flex items-center shrink-0`}>{choice.id}</span>
+                              <span className="flex-1">{choice.text}</span>
+                              {isMyChoice && (
+                                <span className="bg-yellow-400 text-black text-[10px] px-2 py-0.5 rounded-full shrink-0 font-bold">
+                                  선택됨
+                                </span>
+                              )}
+                              {isMySpectatorVote && (
+                                <span className="bg-purple-700 text-white text-[10px] px-2 py-0.5 rounded-full shrink-0">
+                                  MY VOTE
+                                </span>
+                              )}
+                            </div>
+                            {/* 다른 팀들의 투표 표시 */}
+                            {hasOtherVotes && (
+                              <div className="mt-2 flex flex-wrap gap-1 pl-7">
+                                {voterTeams.map((voterName, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="bg-purple-100 text-purple-700 text-[10px] px-1.5 py-0.5 rounded font-medium"
+                                  >
+                                    👥 {voterName}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
-                    <span className="font-black text-sm">{t.score}점</span>
-                  </div>
-                );
-              })}
-            </div>
+                 )}
+
+                 {/* Open Ended Indicator */}
+                 {isOpenEnded && (
+                    <div className="flex items-center gap-2 text-purple-900 font-bold bg-purple-100 p-3 border-2 border-purple-900 mb-4 text-sm">
+                      <MessageSquare size={16} />
+                      <span>주관식 답변: 자유롭게 작성하세요.</span>
+                    </div>
+                 )}
+
+                 {/* Reasoning Input - 로컬 상태 사용 (동시 사용자 충돌 방지) */}
+                 {(isMyTurn || localChoice || isOpenEnded) && (
+                   <>
+                     <textarea
+                       value={localReasoning}
+                       onChange={(e) => isMyTurn && setLocalReasoning(e.target.value)}
+                       disabled={!isMyTurn}
+                       placeholder={isMyTurn ? (isOpenEnded ? "답변을 입력하세요..." : "선택 사유를 입력하세요...") : "다른 팀이 사유를 입력중입니다..."}
+                       className="w-full p-2 border-2 border-black font-medium text-sm focus:outline-none focus:bg-yellow-50 mb-3 h-24 resize-none disabled:bg-gray-100 disabled:text-gray-500"
+                     />
+
+                     {isMyTurn ? (
+                       <button
+                         onClick={handleSave}
+                         disabled={(!isOpenEnded && !localChoice) || !localReasoning.trim() || isSaving}
+                         className="w-full py-3 bg-blue-600 text-white font-black uppercase flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                       >
+                         {isSaving ? (
+                           <>
+                             <Save className="animate-pulse" size={16} />
+                             저장 중...
+                           </>
+                         ) : (
+                           <>
+                             <Save size={16} />
+                             저장하기
+                           </>
+                         )}
+                       </button>
+                     ) : (
+                        <div className="w-full py-3 bg-gray-200 text-gray-500 font-bold uppercase text-center border-2 border-transparent">
+                           팀 입력 대기 중...
+                        </div>
+                     )}
+                   </>
+                 )}
+               </>
+             )}
+           </div>
+        </div>
+      )}
+
+      {/* --- IDLE STATE (Your Board Info) --- */}
+      {!activeCard && (
+        <div className="mb-8">
+          <div className="mb-4 relative">
+             <div className="bg-white border-4 border-black p-6 pt-8 text-center shadow-hard">
+                <MapPin className="mx-auto mb-2 text-blue-900" size={32} />
+                <h3 className="text-xl font-black uppercase leading-tight">{currentSquare?.name}</h3>
+             </div>
           </div>
-        )}
+
+          {/* 게임 상태 표시 (관리자가 주사위 입력) */}
+          {!isGameStarted || gamePhase === GamePhase.WaitingToStart ? (
+            <div className="w-full py-6 border-4 border-black text-xl font-black shadow-hard uppercase flex flex-col items-center justify-center gap-2 bg-gray-200 text-gray-600">
+              <div className="animate-pulse">⏳</div>
+              <span>게임 시작 대기 중</span>
+            </div>
+          ) : gamePhase === GamePhase.Paused ? (
+            <div className="w-full py-6 border-4 border-black text-xl font-black shadow-hard uppercase flex flex-col items-center justify-center gap-2 bg-orange-100 text-orange-700">
+              <div>⏸️</div>
+              <span>게임 일시정지 중</span>
+            </div>
+          ) : gamePhase === GamePhase.Rolling ? (
+            <div className="w-full py-6 border-4 border-black text-xl font-black shadow-hard uppercase flex flex-col items-center justify-center gap-2 bg-yellow-100 text-yellow-700">
+              <Dice5 size={28} className="animate-spin" />
+              <span>주사위 굴리는 중...</span>
+            </div>
+          ) : gamePhase === GamePhase.Moving ? (
+            <div className="w-full py-6 border-4 border-black text-xl font-black shadow-hard uppercase flex flex-col items-center justify-center gap-2 bg-blue-100 text-blue-700">
+              <MapPin size={28} />
+              <span>이동 중...</span>
+            </div>
+          ) : (
+            <div className="w-full py-8 border-4 border-gray-400 text-2xl font-black shadow-hard flex flex-col items-center justify-center gap-2 bg-gray-200 text-gray-700 uppercase tracking-wider">
+              <div className="animate-pulse text-3xl">⏳</div>
+              <span>WAITING</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* All Team Scores */}
+      <div className="bg-gradient-to-br from-blue-50 to-indigo-100 border-4 border-blue-500 p-4 shadow-hard">
+        <div className="flex items-center justify-center gap-2 mb-3">
+          <Trophy size={18} className="text-blue-600" />
+          <span className="text-sm font-bold uppercase text-blue-600">팀 점수 현황</span>
+        </div>
+
+        {/* 전체 팀 점수 그리드 */}
+        <div className="grid grid-cols-2 gap-2">
+          {(allTeams.length > 0 ? allTeams : [team])
+            .sort((a, b) => (b.score ?? 100) - (a.score ?? 100))
+            .map((t, index) => (
+              <div
+                key={t.id}
+                className={`p-3 rounded-lg border-2 text-center ${
+                  t.id === team.id ? 'ring-2 ring-blue-500 ring-offset-1' : ''
+                } ${
+                  index === 0 ? 'bg-yellow-100 border-yellow-400' :
+                  index === 1 ? 'bg-gray-100 border-gray-300' :
+                  index === 2 ? 'bg-orange-100 border-orange-300' :
+                  'bg-white border-gray-200'
+                }`}
+              >
+                <div className="flex items-center justify-center gap-1 mb-1">
+                  {index === 0 && <span className="text-lg">🥇</span>}
+                  {index === 1 && <span className="text-lg">🥈</span>}
+                  {index === 2 && <span className="text-lg">🥉</span>}
+                  <span className={`text-sm font-bold ${t.id === team.id ? 'text-blue-800' : 'text-gray-700'}`}>
+                    {t.name}
+                    {t.id === team.id && <span className="text-blue-600 ml-1">(우리)</span>}
+                  </span>
+                </div>
+                <div className={`text-2xl font-black ${t.id === team.id ? 'text-blue-800' : 'text-gray-800'}`}>
+                  {t.score ?? 100}점
+                </div>
+              </div>
+            ))
+          }
+        </div>
       </div>
     </div>
   );

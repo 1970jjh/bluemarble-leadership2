@@ -1,103 +1,25 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Team, GamePhase } from '../types';
-
-// ============================================================
-// Props
-// ============================================================
+import React, { useState, useEffect, useRef } from 'react';
+import { GamePhase, Team } from '../types';
+import Dice from './Dice';
+import { BarChart2, RefreshCcw, Terminal, Pause, PlayCircle } from 'lucide-react';
 
 interface ControlPanelProps {
   currentTeam: Team;
-  teams: Team[];
+  teams: Team[];  // 전체 팀 목록
   phase: GamePhase;
   diceValue: [number, number];
   rolling: boolean;
-  onManualRoll: (total: number, teamIndex: number) => void;
+  onManualRoll: (total: number, teamIndex: number) => void;  // 팀 인덱스 포함
   onOpenReport: () => void;
   onReset: () => void;
   logs: string[];
+  // 게임 상태 props
   isGameStarted: boolean;
   onStartGame: () => void;
   onPauseGame: () => void;
   onResumeGame: () => void;
-  lastMoveInfo: { teamName: string; spaces: number } | null;
+  lastMoveInfo?: { teamName: string; spaces: number } | null;
 }
-
-// ============================================================
-// Phase label helper
-// ============================================================
-
-function phaseLabel(phase: GamePhase): string {
-  switch (phase) {
-    case GamePhase.Setup: return '설정 중';
-    case GamePhase.Lobby: return '로비';
-    case GamePhase.WaitingToStart: return '시작 대기';
-    case GamePhase.Idle: return '대기';
-    case GamePhase.Rolling: return '주사위 굴리는 중';
-    case GamePhase.Moving: return '이동 중';
-    case GamePhase.ShowingDiceResult: return '주사위 결과';
-    case GamePhase.ShowingCompetencyCard: return '역량카드 미리보기';
-    case GamePhase.Event: return '이벤트';
-    case GamePhase.Decision: return '의사결정';
-    case GamePhase.Result: return '결과';
-    case GamePhase.Paused: return '일시정지';
-    case GamePhase.End: return '종료';
-    default: return String(phase);
-  }
-}
-
-function phaseColor(phase: GamePhase): string {
-  switch (phase) {
-    case GamePhase.Idle:
-    case GamePhase.WaitingToStart:
-      return 'bg-gray-200';
-    case GamePhase.Rolling:
-    case GamePhase.Moving:
-    case GamePhase.ShowingDiceResult:
-      return 'bg-yellow-300';
-    case GamePhase.Decision:
-    case GamePhase.Event:
-    case GamePhase.ShowingCompetencyCard:
-      return 'bg-blue-300';
-    case GamePhase.Result:
-      return 'bg-green-300';
-    case GamePhase.Paused:
-      return 'bg-orange-300';
-    case GamePhase.End:
-      return 'bg-red-300';
-    default:
-      return 'bg-gray-200';
-  }
-}
-
-// ============================================================
-// Color mapping
-// ============================================================
-
-const TEAM_COLOR_CSS: Record<string, string> = {
-  Red: '#ef4444',
-  Blue: '#3b82f6',
-  Green: '#22c55e',
-  Yellow: '#eab308',
-  Purple: '#a855f7',
-  Orange: '#f97316',
-  Pink: '#ec4899',
-  Teal: '#14b8a6',
-  Cyan: '#06b6d4',
-  Lime: '#84cc16',
-  Indigo: '#6366f1',
-  Amber: '#f59e0b',
-  Emerald: '#10b981',
-  Slate: '#64748b',
-  Rose: '#f43f5e',
-};
-
-function getColorCSS(color: string): string {
-  return TEAM_COLOR_CSS[color] || '#6b7280';
-}
-
-// ============================================================
-// Component
-// ============================================================
 
 const ControlPanel: React.FC<ControlPanelProps> = ({
   currentTeam,
@@ -115,159 +37,185 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
   onResumeGame,
   lastMoveInfo,
 }) => {
-  const [manualDice, setManualDice] = useState<number>(7);
-  const [selectedTeamIndex, setSelectedTeamIndex] = useState<number>(0);
-  const logsEndRef = useRef<HTMLDivElement>(null);
+  const [manualInput, setManualInput] = useState<string>('');
+  const [selectedTeamIndex, setSelectedTeamIndex] = useState<number>(0);  // 선택된 팀 인덱스
+  const logEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll logs to bottom
+  // Auto-scroll to bottom of logs
   useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs.length]);
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs]);
 
-  const handleRoll = () => {
-    const clamped = Math.max(2, Math.min(12, manualDice));
-    onManualRoll(clamped, selectedTeamIndex);
+  const handleManualSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const val = parseInt(manualInput);
+    if (!isNaN(val) && val >= 2 && val <= 12) {
+      onManualRoll(val, selectedTeamIndex);
+      setManualInput('');
+    } else {
+      alert("2~12 사이의 숫자를 입력해주세요");
+    }
   };
 
   return (
-    <div className="flex flex-col gap-2 h-full">
-      {/* Game Status */}
-      <div className="bg-white border-4 border-black p-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-        <div className="text-[10px] font-bold text-gray-500 uppercase mb-1">게임 상태</div>
-        <div className={`inline-block px-2 py-0.5 border-2 border-black font-black text-xs ${phaseColor(phase)}`}>
-          {phaseLabel(phase)}
-        </div>
-      </div>
-
-      {/* Current Team */}
-      <div className="bg-white border-4 border-black p-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-        <div className="text-[10px] font-bold text-gray-500 uppercase mb-1">현재 팀</div>
-        <div className="flex items-center gap-2">
-          <div
-            className="w-4 h-4 rounded-full border-2 border-black flex-shrink-0"
-            style={{ backgroundColor: getColorCSS(currentTeam.color) }}
-          />
-          <span className="font-black text-sm truncate">{currentTeam.name}</span>
-        </div>
-        {lastMoveInfo && (
-          <div className="mt-1 text-[10px] font-bold text-gray-500">
-            {lastMoveInfo.teamName}: {lastMoveInfo.spaces}칸 이동
-          </div>
-        )}
-      </div>
-
-      {/* Dice Control */}
-      <div className="bg-white border-4 border-black p-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-        <div className="text-[10px] font-bold text-gray-500 uppercase mb-1">주사위</div>
-
-        {/* Dice value display */}
-        <div className="flex items-center justify-center gap-1 mb-2">
-          <div className="w-8 h-8 bg-white border-2 border-black flex items-center justify-center font-black text-lg">
-            {diceValue[0]}
-          </div>
-          <span className="font-black text-xs">+</span>
-          <div className="w-8 h-8 bg-white border-2 border-black flex items-center justify-center font-black text-lg">
-            {diceValue[1]}
-          </div>
-          <span className="font-black text-xs">=</span>
-          <div className="w-8 h-8 bg-yellow-300 border-2 border-black flex items-center justify-center font-black text-lg">
-            {diceValue[0] + diceValue[1]}
-          </div>
-        </div>
-
-        {/* Manual dice input */}
-        <div className="flex flex-col gap-1">
-          <input
-            type="number"
-            min={2}
-            max={12}
-            value={manualDice}
-            onChange={(e) => setManualDice(Number(e.target.value))}
-            className="w-full border-2 border-black px-2 py-1 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-yellow-400"
-          />
-          <select
-            value={selectedTeamIndex}
-            onChange={(e) => setSelectedTeamIndex(Number(e.target.value))}
-            className="w-full border-2 border-black px-2 py-1 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-yellow-400"
-          >
-            {teams.map((team, idx) => (
-              <option key={team.id} value={idx}>
-                {team.name}
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={handleRoll}
-            disabled={rolling}
-            className={`w-full py-1.5 border-2 border-black font-black text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:shadow-none transition-all ${
-              rolling
-                ? 'bg-gray-300 cursor-not-allowed'
-                : 'bg-yellow-400 hover:bg-yellow-500'
-            }`}
-          >
-            {rolling ? '굴리는 중...' : '주사위'}
-          </button>
-        </div>
-      </div>
-
-      {/* Game Controls */}
-      <div className="bg-white border-4 border-black p-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-        <div className="text-[10px] font-bold text-gray-500 uppercase mb-1">게임 제어</div>
-        <div className="flex flex-col gap-1">
-          {!isGameStarted ? (
-            <button
-              onClick={onStartGame}
-              className="w-full py-1.5 bg-green-400 border-2 border-black font-black text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:shadow-none transition-all"
-            >
-              게임 시작
+    <div className="h-full flex flex-col gap-6">
+      {/* Title / Admin Section */}
+      <div className="bg-white border-4 border-black p-4 shadow-hard">
+        <div className="flex justify-between items-center mb-4 pb-4 border-b-4 border-black">
+          <h2 className="text-2xl font-black text-blue-900 uppercase italic">Control<br/>Panel</h2>
+          <div className="flex gap-2">
+            <button onClick={onReset} className="p-2 border-2 border-black bg-gray-200 hover:bg-red-500 hover:text-white transition-colors" title="Reset Game">
+              <RefreshCcw size={20} />
             </button>
-          ) : (
+             <button onClick={onOpenReport} className="p-2 border-2 border-black bg-gray-200 hover:bg-purple-500 hover:text-white transition-colors" title="View Report">
+              <BarChart2 size={20} />
+            </button>
+          </div>
+        </div>
+
+        {/* Recently Turn Status */}
+        <div className="text-center bg-gray-100 border-2 border-black p-4">
+          <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Recently Turn</p>
+          {lastMoveInfo ? (
             <>
-              {phase === GamePhase.Paused ? (
-                <button
-                  onClick={onResumeGame}
-                  className="w-full py-1.5 bg-blue-400 border-2 border-black font-black text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:shadow-none transition-all"
-                >
-                  재개
-                </button>
-              ) : (
-                <button
-                  onClick={onPauseGame}
-                  className="w-full py-1.5 bg-orange-400 border-2 border-black font-black text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:shadow-none transition-all"
-                >
-                  일시정지
-                </button>
-              )}
+              <h3 className="text-3xl font-black uppercase mb-2 truncate text-blue-700">
+                {lastMoveInfo.teamName}
+              </h3>
+              <div className="my-2 p-2 bg-white border-2 border-black">
+                <p className="text-xs text-gray-400 font-bold uppercase">이동 칸수</p>
+                <p className="text-2xl font-black text-black">{lastMoveInfo.spaces}칸</p>
+              </div>
             </>
+          ) : (
+            <p className="text-sm text-gray-400 font-bold py-2">아직 이동 기록 없음</p>
           )}
-          <button
-            onClick={onOpenReport}
-            className="w-full py-1.5 bg-purple-400 border-2 border-black font-black text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:shadow-none transition-all"
-          >
-            리포트
-          </button>
-          <button
-            onClick={onReset}
-            className="w-full py-1.5 bg-red-400 border-2 border-black font-black text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:shadow-none transition-all"
-          >
-            리셋
-          </button>
+          <div className={`inline-block border-2 border-black px-4 py-1 text-sm font-bold uppercase ${
+            phase === GamePhase.Decision ? 'bg-orange-400 text-white animate-pulse' : 'bg-black text-white'
+          }`}>
+            {phase}
+          </div>
         </div>
       </div>
 
-      {/* Game Logs */}
-      <div className="bg-white border-4 border-black p-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex-1 min-h-0 flex flex-col">
-        <div className="text-[10px] font-bold text-gray-500 uppercase mb-1">게임 로그</div>
-        <div className="flex-1 overflow-y-auto text-[10px] font-mono leading-tight space-y-0.5 min-h-0">
-          {logs.length === 0 && (
-            <div className="text-gray-400 italic">로그가 없습니다.</div>
-          )}
-          {logs.map((log, i) => (
-            <div key={i} className="text-gray-700 border-b border-gray-100 pb-0.5">
-              {log}
-            </div>
-          ))}
-          <div ref={logsEndRef} />
+      {/* Action Section */}
+      <div className="flex-1 bg-blue-900 border-4 border-black p-4 shadow-hard flex flex-col gap-4 text-white overflow-y-auto">
+
+        {/* START / PAUSE 버튼 */}
+        {!isGameStarted ? (
+          <button
+            onClick={onStartGame}
+            className="w-full py-4 border-4 border-black font-black text-2xl shadow-hard transition-all transform active:translate-x-1 active:translate-y-1 flex items-center justify-center gap-3 bg-green-500 text-white hover:bg-green-400"
+          >
+            <PlayCircle size={28} />
+            START GAME
+          </button>
+        ) : phase === GamePhase.Paused ? (
+          <button
+            onClick={onResumeGame}
+            className="w-full py-4 border-4 border-black font-black text-2xl shadow-hard transition-all transform active:translate-x-1 active:translate-y-1 flex items-center justify-center gap-3 bg-green-500 text-white hover:bg-green-400"
+          >
+            <PlayCircle size={28} />
+            RESUME
+          </button>
+        ) : (
+          <button
+            onClick={onPauseGame}
+            disabled={phase === GamePhase.Rolling || phase === GamePhase.Moving || phase === GamePhase.Decision}
+            className={`w-full py-3 border-4 border-black font-bold text-lg shadow-hard-sm transition-all flex items-center justify-center gap-2
+              ${phase === GamePhase.Rolling || phase === GamePhase.Moving || phase === GamePhase.Decision
+                ? 'bg-gray-500 text-gray-300 cursor-not-allowed border-gray-600'
+                : 'bg-orange-500 text-white hover:bg-orange-400'}`}
+          >
+            <Pause size={20} />
+            PAUSE
+          </button>
+        )}
+
+        {/* Dice Display */}
+        <div className="flex justify-center gap-6 py-2">
+           <Dice value={diceValue[0]} rolling={rolling} />
+           <Dice value={diceValue[1]} rolling={rolling} />
+        </div>
+
+        {/* 팀 선택 + 주사위 입력 */}
+        <div className="bg-white p-4 border-4 border-black text-black space-y-3">
+          {/* 이동할 팀 선택 */}
+          <div>
+            <label className="block text-xs font-bold uppercase mb-2 text-gray-600">🎯 이동할 팀 선택</label>
+            <select
+              value={selectedTeamIndex}
+              onChange={(e) => setSelectedTeamIndex(parseInt(e.target.value))}
+              className="w-full border-2 border-black p-2 font-bold text-lg focus:outline-none focus:bg-yellow-100 cursor-pointer"
+              disabled={!isGameStarted || phase !== GamePhase.Idle || rolling}
+            >
+              {teams.map((team, index) => (
+                <option key={team.id} value={index}>
+                  {index + 1}팀
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 주사위 입력 */}
+          <div>
+            <label className="block text-xs font-bold uppercase mb-2 text-gray-600">🎲 주사위 입력 (2~12)</label>
+            <form onSubmit={handleManualSubmit} className="flex gap-2">
+              <input
+                type="number"
+                min="2"
+                max="12"
+                value={manualInput}
+                onChange={(e) => setManualInput(e.target.value)}
+                placeholder="2-12"
+                className="w-full border-2 border-black p-2 font-mono font-bold text-xl focus:outline-none focus:bg-yellow-100"
+                disabled={!isGameStarted || phase !== GamePhase.Idle || rolling}
+              />
+              <button
+                type="submit"
+                disabled={!isGameStarted || phase !== GamePhase.Idle || rolling || !manualInput}
+                className="bg-green-600 text-white border-2 border-black px-6 font-bold hover:bg-green-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                GO
+              </button>
+            </form>
+          </div>
+        </div>
+
+        {/* Game Log Terminal - 고정 높이 + 스크롤바 (3배 확대) */}
+        <div id="game-log-terminal" className="h-[600px] max-h-[600px] bg-black border-4 border-gray-700 p-2 font-mono text-xs overflow-y-auto relative shadow-inner flex flex-col">
+          <div className="sticky top-0 bg-black/90 border-b border-gray-700 text-gray-400 font-bold uppercase text-[10px] mb-2 flex items-center gap-1 z-10">
+             <Terminal size={10} /> System Log ({logs.length})
+          </div>
+          <div className="flex-1 flex flex-col gap-1">
+             {logs.length === 0 && <span className="text-gray-600 italic">&gt; Waiting for game start...</span>}
+             {logs.map((log, i) => (
+                <div key={i} className="text-green-400 break-words leading-tight">
+                  <span className="opacity-50 mr-1">&gt;</span>{log}
+                </div>
+             ))}
+             <div ref={logEndRef} />
+          </div>
+          {/* Scrollbar styling specific to this container */}
+          <style>{`
+            #game-log-terminal::-webkit-scrollbar {
+              width: 10px;
+            }
+            #game-log-terminal::-webkit-scrollbar-track {
+              background: #1a1a1a;
+            }
+            #game-log-terminal::-webkit-scrollbar-thumb {
+              background: #d97706;
+              border: 2px solid #1a1a1a;
+              border-radius: 4px;
+            }
+            #game-log-terminal::-webkit-scrollbar-thumb:hover {
+              background: #f59e0b;
+            }
+          `}</style>
+        </div>
+
+        <div className="text-[10px] text-blue-200 text-center font-mono opacity-60">
+          ID: {currentTeam.id.toUpperCase()} | P: {currentTeam.position}
         </div>
       </div>
     </div>

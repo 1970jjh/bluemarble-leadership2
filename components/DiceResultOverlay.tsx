@@ -1,4 +1,6 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
+import SlotMachine from './SlotMachine';
+import { X } from 'lucide-react';
 
 interface DiceResultOverlayProps {
   visible: boolean;
@@ -7,128 +9,109 @@ interface DiceResultOverlayProps {
   isRolling: boolean;
   onRollComplete: () => void;
   onShowResultComplete: () => void;
-  isDouble: boolean;
+  isDouble?: boolean;
 }
 
-const DICE_FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
-
-export default function DiceResultOverlay({
+const DiceResultOverlay: React.FC<DiceResultOverlayProps> = ({
   visible,
   dice1,
   dice2,
   isRolling,
   onRollComplete,
   onShowResultComplete,
-  isDouble,
-}: DiceResultOverlayProps) {
-  const [displayDice1, setDisplayDice1] = useState(0);
-  const [displayDice2, setDisplayDice2] = useState(0);
-  const [rollCompleted, setRollCompleted] = useState(false);
-  const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const animFrameRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  isDouble = false,
+}) => {
+  const [showTotal, setShowTotal] = useState(false);
 
-  // Rolling animation
-  useEffect(() => {
-    if (!visible || !isRolling) return;
-
-    setRollCompleted(false);
-
-    // Animate dice faces rapidly
-    animFrameRef.current = setInterval(() => {
-      setDisplayDice1(Math.floor(Math.random() * 6));
-      setDisplayDice2(Math.floor(Math.random() * 6));
-    }, 80);
-
-    // Stop rolling after 2 seconds
-    rollTimerRef.current = setTimeout(() => {
-      if (animFrameRef.current) clearInterval(animFrameRef.current);
-      setDisplayDice1(dice1 - 1);
-      setDisplayDice2(dice2 - 1);
-      setRollCompleted(true);
-      onRollComplete();
-    }, 2000);
-
-    return () => {
-      if (animFrameRef.current) clearInterval(animFrameRef.current);
-      if (rollTimerRef.current) clearTimeout(rollTimerRef.current);
-    };
-  }, [visible, isRolling]);
-
-  // Show result then dismiss
-  useEffect(() => {
-    if (!visible || !rollCompleted) return;
-
-    showTimerRef.current = setTimeout(() => {
-      onShowResultComplete();
-    }, 2000);
-
-    return () => {
-      if (showTimerRef.current) clearTimeout(showTimerRef.current);
-    };
-  }, [visible, rollCompleted]);
-
-  // Reset on hide
   useEffect(() => {
     if (!visible) {
-      setRollCompleted(false);
+      setShowTotal(false);
     }
   }, [visible]);
+
+  const handleSlotComplete = () => {
+    // 음향 효과 - 결과 공개
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.frequency.value = 800;
+      oscillator.type = 'sine';
+      gainNode.gain.value = 0.2;
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.3);
+      setTimeout(() => audioContext.close(), 500);
+    } catch (e) {}
+
+    onRollComplete();
+    setShowTotal(true);
+
+    // 3초 후 결과 표시 완료
+    setTimeout(() => {
+      onShowResultComplete();
+    }, 3000);
+  };
 
   if (!visible) return null;
 
   const total = dice1 + dice2;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-      <div className="text-center">
-        {/* Dice display */}
-        <div className="flex items-center justify-center gap-8 mb-6">
-          <div
-            className={`text-[120px] leading-none select-none ${
-              isRolling && !rollCompleted ? 'animate-bounce' : ''
-            }`}
-            style={{
-              textShadow: '4px 4px 0px rgba(0,0,0,0.5)',
-              transform: isRolling && !rollCompleted ? 'rotate(15deg)' : 'rotate(0deg)',
-              transition: 'transform 0.1s',
-            }}
-          >
-            {DICE_FACES[displayDice1]}
-          </div>
-          <div
-            className={`text-[120px] leading-none select-none ${
-              isRolling && !rollCompleted ? 'animate-bounce' : ''
-            }`}
-            style={{
-              textShadow: '4px 4px 0px rgba(0,0,0,0.5)',
-              transform: isRolling && !rollCompleted ? 'rotate(-15deg)' : 'rotate(0deg)',
-              transition: 'transform 0.1s',
-              animationDelay: '0.1s',
-            }}
-          >
-            {DICE_FACES[displayDice2]}
-          </div>
-        </div>
+    <div className="fixed inset-0 bg-black/90 z-[100] flex flex-col items-center justify-center backdrop-blur-sm">
+      {/* 건너뛰기 버튼 (결과 표시 중에만) */}
+      {showTotal && (
+        <button
+          onClick={onShowResultComplete}
+          className="absolute top-4 right-4 bg-white/20 hover:bg-white/40 text-white p-3 rounded-full transition-all border-2 border-white/30"
+          title="건너뛰기"
+        >
+          <X size={24} />
+        </button>
+      )}
 
-        {/* Result text */}
-        {rollCompleted && (
-          <div className="space-y-4 animate-pulse">
-            <div className="bg-white border-4 border-black px-8 py-4 inline-block shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-              <span className="text-4xl font-black text-black">
-                {dice1} + {dice2} = {total}
-              </span>
+      {/* 슬롯머신 */}
+      <div className="mb-8">
+        <SlotMachine
+          value1={dice1}
+          value2={dice2}
+          rolling={isRolling}
+          onRollComplete={handleSlotComplete}
+        />
+      </div>
+
+      {/* 결과 표시 */}
+      {showTotal && (
+        <div className="animate-in zoom-in duration-500">
+          <div className="text-center">
+            <div className="text-white text-2xl font-bold mb-4">
+              {dice1} + {dice2} =
+            </div>
+            <div className={`text-9xl font-black ${isDouble ? 'text-yellow-400 animate-pulse' : 'text-white'}`}>
+              {total}
             </div>
             {isDouble && (
-              <div className="bg-yellow-400 border-4 border-black px-6 py-3 inline-block shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                <span className="text-3xl font-black text-black">
-                  DOUBLE!
-                </span>
+              <div className="mt-4 text-yellow-400 text-3xl font-black animate-bounce">
+                🎲 DOUBLE! BONUS! 🎲
               </div>
             )}
+            <div className="mt-4 text-gray-400 text-lg">
+              {total}칸 이동합니다
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* 롤링 중 텍스트 */}
+      {isRolling && !showTotal && (
+        <div className="text-yellow-400 text-2xl font-black animate-pulse mt-4">
+          🎰 슬롯을 돌리는 중...
+        </div>
+      )}
     </div>
   );
-}
+};
+
+export default DiceResultOverlay;

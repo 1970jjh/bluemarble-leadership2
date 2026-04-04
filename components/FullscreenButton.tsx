@@ -1,16 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { Maximize2, Minimize2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
 
-export default function FullscreenButton() {
+const FullscreenButton: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  useEffect(() => {
-    const handleChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-    document.addEventListener('fullscreenchange', handleChange);
-    return () => document.removeEventListener('fullscreenchange', handleChange);
+  const updateState = useCallback(() => {
+    setIsFullscreen(!!document.fullscreenElement);
   }, []);
+
+  useEffect(() => {
+    document.addEventListener('fullscreenchange', updateState);
+    return () => document.removeEventListener('fullscreenchange', updateState);
+  }, [updateState]);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -23,14 +23,12 @@ export default function FullscreenButton() {
   return (
     <button
       onClick={toggleFullscreen}
-      className="fixed bottom-4 right-4 z-40 bg-white hover:bg-gray-100 border-4 border-black p-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none transition-all active:translate-x-1 active:translate-y-1"
+      className="fixed bottom-4 right-4 z-[9999] bg-black text-white border-2 border-white px-3 py-2 text-sm font-bold shadow-lg hover:bg-gray-800 transition-colors rounded"
       title={isFullscreen ? '전체화면 해제' : '전체화면'}
     >
-      {isFullscreen ? (
-        <Minimize2 className="w-5 h-5 text-black" strokeWidth={3} />
-      ) : (
-        <Maximize2 className="w-5 h-5 text-black" strokeWidth={3} />
-      )}
+      {isFullscreen ? '⛶ 전체화면 해제' : '⛶ 전체화면'}
     </button>
   );
-}
+};
+
+export default FullscreenButton;
