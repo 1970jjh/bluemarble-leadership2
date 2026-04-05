@@ -23,6 +23,22 @@ import type { Session, Team, TurnRecord, GamePhase, SessionStatus } from '../typ
 const SESSIONS_COLLECTION = 'sessions';
 const GAME_STATE_COLLECTION = 'gameState';
 
+// Firestore는 undefined 값을 허용하지 않으므로 제거하는 유틸리티
+function removeUndefined(obj: any): any {
+  if (obj === null || obj === undefined) return null;
+  if (Array.isArray(obj)) return obj.map(removeUndefined);
+  if (typeof obj === 'object' && !(obj instanceof Timestamp)) {
+    const cleaned: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value !== undefined) {
+        cleaned[key] = removeUndefined(value);
+      }
+    }
+    return cleaned;
+  }
+  return obj;
+}
+
 // ========================
 // 세션(Session) 관련 함수
 // ========================
@@ -30,10 +46,13 @@ const GAME_STATE_COLLECTION = 'gameState';
 // 새 세션 생성
 export async function createSession(session: Session): Promise<void> {
   const sessionRef = doc(db, SESSIONS_COLLECTION, session.id);
-  await setDoc(sessionRef, {
+  const cleanedSession = removeUndefined({
     ...session,
     createdAt: serverTimestamp(),
   });
+  console.log('[Firestore] createSession 시도:', session.id, 'accessCode:', session.accessCode);
+  await setDoc(sessionRef, cleanedSession);
+  console.log('[Firestore] createSession 성공:', session.id);
 }
 
 // 세션 가져오기
@@ -55,9 +74,17 @@ export async function getSession(sessionId: string): Promise<Session | null> {
 
 // 접근 코드로 세션 찾기
 export async function getSessionByAccessCode(accessCode: string): Promise<Session | null> {
+  console.log('[Firestore] getSessionByAccessCode 검색:', accessCode);
   const sessionsRef = collection(db, SESSIONS_COLLECTION);
+
+  // 먼저 전체 세션 조회로 디버깅
+  const allSnapshot = await getDocs(sessionsRef);
+  console.log('[Firestore] 전체 세션 수:', allSnapshot.size,
+    '코드 목록:', allSnapshot.docs.map(d => d.data().accessCode));
+
   const q = query(sessionsRef, where('accessCode', '==', accessCode));
   const snapshot = await getDocs(q);
+  console.log('[Firestore] 접속코드 매칭 결과:', snapshot.size);
 
   if (!snapshot.empty) {
     const data = snapshot.docs[0].data();
