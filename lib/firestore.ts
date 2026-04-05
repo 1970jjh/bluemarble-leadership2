@@ -1,27 +1,10 @@
-// Firestore 데이터베이스 서비스
-import {
-  collection,
-  doc,
-  setDoc,
-  getDoc,
-  getDocs,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  onSnapshot,
-  Unsubscribe,
-  serverTimestamp,
-  Timestamp,
-  runTransaction,
-  writeBatch
-} from 'firebase/firestore';
-import { db } from './firebase';
+// Google Apps Script 기반 데이터베이스 서비스
+// Firebase Firestore 대신 Google Sheets를 백엔드로 사용
+import { gasService } from './gasService';
 import type { Session, Team, TurnRecord, GamePhase, SessionStatus } from '../types';
 
-// 컬렉션 이름
-const SESSIONS_COLLECTION = 'sessions';
-const GAME_STATE_COLLECTION = 'gameState';
+// Unsubscribe 타입 (폴링 타이머 해제용)
+type Unsubscribe = () => void;
 
 // ========================
 // 세션(Session) 관련 함수
@@ -29,78 +12,72 @@ const GAME_STATE_COLLECTION = 'gameState';
 
 // 새 세션 생성
 export async function createSession(session: Session): Promise<void> {
-  const sessionRef = doc(db, SESSIONS_COLLECTION, session.id);
-  await setDoc(sessionRef, {
+  const sessionWithTimestamp = {
     ...session,
-    createdAt: serverTimestamp(),
-  });
+    createdAt: Date.now(),
+  };
+  const gameState: GameState = {
+    sessionId: session.id,
+    phase: 'Idle',
+    currentTeamIndex: 0,
+    currentTurn: 0,
+    diceValue: [0, 0],
+    currentCard: null,
+    selectedChoice: null,
+    reasoning: '',
+    aiResult: null,
+    isSubmitted: false,
+    isAiProcessing: false,
+    isGameStarted: false,
+    gameLogs: [],
+    lastUpdated: Date.now(),
+  };
+  await gasService.createSession(
+    JSON.stringify(sessionWithTimestamp),
+    JSON.stringify(gameState)
+  );
 }
 
 // 세션 가져오기
 export async function getSession(sessionId: string): Promise<Session | null> {
-  const sessionRef = doc(db, SESSIONS_COLLECTION, sessionId);
-  const snapshot = await getDoc(sessionRef);
-
-  if (snapshot.exists()) {
-    const data = snapshot.data();
-    return {
-      ...data,
-      createdAt: data.createdAt instanceof Timestamp
-        ? data.createdAt.toMillis()
-        : data.createdAt
-    } as Session;
+  const result = await gasService.getSession(sessionId);
+  if (result.success && result.data) {
+    return result.data as Session;
   }
   return null;
 }
 
 // 접근 코드로 세션 찾기
 export async function getSessionByAccessCode(accessCode: string): Promise<Session | null> {
-  const sessionsRef = collection(db, SESSIONS_COLLECTION);
-  const q = query(sessionsRef, where('accessCode', '==', accessCode));
-  const snapshot = await getDocs(q);
-
-  if (!snapshot.empty) {
-    const data = snapshot.docs[0].data();
-    return {
-      ...data,
-      createdAt: data.createdAt instanceof Timestamp
-        ? data.createdAt.toMillis()
-        : data.createdAt
-    } as Session;
+  const result = await gasService.getSessionByAccessCode(accessCode);
+  if (result.success && result.data) {
+    return result.data as Session;
   }
   return null;
 }
 
 // 모든 세션 가져오기
 export async function getAllSessions(): Promise<Session[]> {
-  const sessionsRef = collection(db, SESSIONS_COLLECTION);
-  const snapshot = await getDocs(sessionsRef);
-
-  return snapshot.docs.map(doc => {
-    const data = doc.data();
-    return {
-      ...data,
-      createdAt: data.createdAt instanceof Timestamp
-        ? data.createdAt.toMillis()
-        : data.createdAt
-    } as Session;
-  });
+  const result = await gasService.getAllSessions();
+  if (result.success && result.data) {
+    return result.data as Session[];
+  }
+  return [];
 }
 
 // 세션 업데이트
 export async function updateSession(sessionId: string, updates: Partial<Session>): Promise<void> {
-  const sessionRef = doc(db, SESSIONS_COLLECTION, sessionId);
-  await updateDoc(sessionRef, updates);
+  // 현재 세션을 가져와서 merge 후 저장
+  const current = await getSession(sessionId);
+  if (!current) return;
+
+  const updated = { ...current, ...updates, lastUpdated: Date.now() };
+  await gasService.updateSession(sessionId, JSON.stringify(updated));
 }
 
 // 세션 삭제
 export async function deleteSession(sessionId: string): Promise<void> {
-  const sessionRef = doc(db, SESSIONS_COLLECTION, sessionId);
-  await deleteDoc(sessionRef);
-
-  // 게임 상태도 삭제
-  const gameStateRef = doc(db, GAME_STATE_COLLECTION, sessionId);
-  await deleteDoc(gameStateRef);
+  await gasService.deleteSession(sessionId);
 }
 
 // 세션 상태 변경
@@ -145,6 +122,22 @@ export async function addTurnRecord(sessionId: string, teamId: string, record: T
   });
 
   await updateTeams(sessionId, updatedTeams);
+
+  // TurnLog 시트에도 기록 (Google Sheets에서 열람 가능)
+  const team = session.teams.find(t => t.id === teamId);
+  gasService.appendTurnLog({
+    sessionId,
+    sessionName: session.name,
+    teamName: team?.name || '',
+    turnNumber: record.turnNumber,
+    position: record.position || 0,
+    cardTitle: record.cardTitle,
+    situation: record.situation,
+    choiceText: record.choiceText,
+    reasoning: record.reasoning,
+    aiFeedback: record.aiFeedback,
+    scoreChange: JSON.stringify(record.scoreChanges),
+  }).catch(() => {}); // 로그 실패는 무시
 }
 
 // ========================
@@ -175,17 +168,16 @@ export interface TeamRankingData {
 // AI 비교 분석 결과
 export interface AIComparativeResultData {
   rankings: TeamRankingData[];
-  guidance: string;  // "이럴 땐, 이렇게..." 가이드
+  guidance: string;
   analysisTimestamp: number;
 }
 
 export interface GameState {
   sessionId: string;
-  phase: string; // GamePhase
+  phase: string;
   currentTeamIndex: number;
   currentTurn: number;
   diceValue: [number, number];
-  // 현재 턴의 카드 및 응답 정보
   currentCard: any | null;
   selectedChoice: { id: string; text: string } | null;
   reasoning: string;
@@ -200,61 +192,51 @@ export interface GameState {
       insight?: number;
     };
   } | null;
-  isSubmitted: boolean; // 제출 완료 여부
+  isSubmitted: boolean;
   isAiProcessing: boolean;
-  isGameStarted?: boolean; // 게임 시작 여부
-  // 다른 팀 참여 투표 (옵션별 투표한 팀 이름 목록)
+  isGameStarted?: boolean;
   spectatorVotes?: { [optionId: string]: string[] };
-  // 로그
   gameLogs: string[];
   lastUpdated: number;
-
-  // ============================================================
-  // 동시 응답 시스템 관련 필드
-  // ============================================================
-  currentSquareIndex?: number;  // 현재 카드가 표시된 칸 인덱스
-  teamResponses?: { [teamId: string]: TeamResponseData };  // 모든 팀의 응답
-  isRevealed?: boolean;  // 관리자가 '공개' 버튼 클릭했는지
-  aiComparativeResult?: AIComparativeResultData | null;  // AI 비교 분석 결과
-  isAnalyzing?: boolean;  // AI 분석 중
-
-  // ============================================================
-  // 영토 시스템 관련 필드
-  // ============================================================
+  currentSquareIndex?: number;
+  teamResponses?: { [teamId: string]: TeamResponseData };
+  isRevealed?: boolean;
+  aiComparativeResult?: AIComparativeResultData | null;
+  isAnalyzing?: boolean;
   territories?: { [squareIndex: string]: {
     ownerTeamId: string;
     ownerTeamName: string;
     ownerTeamColor: string;
     acquiredAt: number;
   } };
+  turnVersion?: number;
 }
 
 // 게임 상태 저장/업데이트
 export async function saveGameState(state: GameState): Promise<void> {
-  const stateRef = doc(db, GAME_STATE_COLLECTION, state.sessionId);
-  await setDoc(stateRef, {
-    ...state,
-    lastUpdated: Date.now()
-  }, { merge: true });
+  const stateWithTimestamp = { ...state, lastUpdated: Date.now() };
+  await gasService.updateGameState(
+    state.sessionId,
+    JSON.stringify(stateWithTimestamp),
+    true
+  );
 }
 
-// 게임 상태 부분 업데이트 (문서가 없으면 생성)
+// 게임 상태 부분 업데이트 (merge)
 export async function updateGameState(sessionId: string, updates: Partial<GameState>): Promise<void> {
-  const stateRef = doc(db, GAME_STATE_COLLECTION, sessionId);
-  // setDoc with merge: true 사용하여 문서가 없으면 생성, 있으면 업데이트
-  await setDoc(stateRef, {
-    ...updates,
-    lastUpdated: Date.now()
-  }, { merge: true });
+  const updatesWithTimestamp = { ...updates, lastUpdated: Date.now() };
+  await gasService.updateGameState(
+    sessionId,
+    JSON.stringify(updatesWithTimestamp),
+    true
+  );
 }
 
 // 게임 상태 가져오기
 export async function getGameState(sessionId: string): Promise<GameState | null> {
-  const stateRef = doc(db, GAME_STATE_COLLECTION, sessionId);
-  const snapshot = await getDoc(stateRef);
-
-  if (snapshot.exists()) {
-    return snapshot.data() as GameState;
+  const result = await gasService.getGameState(sessionId);
+  if (result.success && result.data) {
+    return result.data as GameState;
   }
   return null;
 }
@@ -268,7 +250,7 @@ export async function addGameLog(sessionId: string, log: string): Promise<void> 
   });
 }
 
-// 관람자 투표 업데이트 (옵션 선택 - 팀 이름 저장)
+// 관람자 투표 업데이트
 export async function updateSpectatorVote(
   sessionId: string,
   optionId: string,
@@ -278,19 +260,16 @@ export async function updateSpectatorVote(
   const state = await getGameState(sessionId);
   const currentVotes: { [key: string]: string[] } = {};
 
-  // 기존 투표 복사
   if (state?.spectatorVotes) {
     Object.keys(state.spectatorVotes).forEach(key => {
       currentVotes[key] = [...(state.spectatorVotes![key] || [])];
     });
   }
 
-  // 이전 선택에서 팀 이름 제거
   if (previousOptionId && currentVotes[previousOptionId]) {
     currentVotes[previousOptionId] = currentVotes[previousOptionId].filter(name => name !== teamName);
   }
 
-  // 새 선택에 팀 이름 추가
   if (!currentVotes[optionId]) {
     currentVotes[optionId] = [];
   }
@@ -307,44 +286,23 @@ export async function updateSpectatorVote(
 // 동시 응답 시스템 함수
 // ========================
 
-// 팀 응답 저장/업데이트 (트랜잭션 사용 - 동시 쓰기 안전)
+// 팀 응답 저장/업데이트
 export async function updateTeamResponse(
   sessionId: string,
   teamId: string,
   response: TeamResponseData
 ): Promise<void> {
-  const stateRef = doc(db, GAME_STATE_COLLECTION, sessionId);
-
-  try {
-    await runTransaction(db, async (transaction) => {
-      const snapshot = await transaction.get(stateRef);
-      const currentState = snapshot.exists() ? snapshot.data() as GameState : null;
-      const currentResponses = currentState?.teamResponses || {};
-
-      transaction.set(stateRef, {
-        ...currentState,
-        teamResponses: {
-          ...currentResponses,
-          [teamId]: response
-        },
-        lastUpdated: Date.now()
-      }, { merge: true });
-    });
-  } catch (error) {
-    console.error('팀 응답 저장 트랜잭션 실패, 재시도 중...', error);
-    // 실패 시 일반 업데이트로 폴백
-    const state = await getGameState(sessionId);
-    const currentResponses = state?.teamResponses || {};
-    await updateGameState(sessionId, {
-      teamResponses: {
-        ...currentResponses,
-        [teamId]: response
-      }
-    });
-  }
+  const state = await getGameState(sessionId);
+  const currentResponses = state?.teamResponses || {};
+  await updateGameState(sessionId, {
+    teamResponses: {
+      ...currentResponses,
+      [teamId]: response
+    }
+  });
 }
 
-// 모든 팀 응답 초기화 (새 라운드 시작 시)
+// 모든 팀 응답 초기화
 export async function resetTeamResponses(sessionId: string): Promise<void> {
   await updateGameState(sessionId, {
     teamResponses: {},
@@ -376,7 +334,7 @@ export async function saveAIComparativeResult(
 // 영토 시스템 함수
 // ========================
 
-// 영토 소유권 업데이트 (트랜잭션 사용)
+// 영토 소유권 업데이트
 export async function updateTerritoryOwnership(
   sessionId: string,
   squareIndex: number,
@@ -384,48 +342,22 @@ export async function updateTerritoryOwnership(
   ownerTeamName: string,
   ownerTeamColor: string
 ): Promise<void> {
-  const stateRef = doc(db, GAME_STATE_COLLECTION, sessionId);
-
-  try {
-    await runTransaction(db, async (transaction) => {
-      const snapshot = await transaction.get(stateRef);
-      const currentState = snapshot.exists() ? snapshot.data() as GameState : null;
-      const currentTerritories = currentState?.territories || {};
-
-      transaction.set(stateRef, {
-        ...currentState,
-        territories: {
-          ...currentTerritories,
-          [squareIndex.toString()]: {
-            ownerTeamId,
-            ownerTeamName,
-            ownerTeamColor,
-            acquiredAt: Date.now()
-          }
-        },
-        lastUpdated: Date.now()
-      }, { merge: true });
-    });
-  } catch (error) {
-    console.error('영토 업데이트 트랜잭션 실패:', error);
-    // 폴백
-    const state = await getGameState(sessionId);
-    const currentTerritories = state?.territories || {};
-    await updateGameState(sessionId, {
-      territories: {
-        ...currentTerritories,
-        [squareIndex.toString()]: {
-          ownerTeamId,
-          ownerTeamName,
-          ownerTeamColor,
-          acquiredAt: Date.now()
-        }
+  const state = await getGameState(sessionId);
+  const currentTerritories = state?.territories || {};
+  await updateGameState(sessionId, {
+    territories: {
+      ...currentTerritories,
+      [squareIndex.toString()]: {
+        ownerTeamId,
+        ownerTeamName,
+        ownerTeamColor,
+        acquiredAt: Date.now()
       }
-    });
-  }
+    }
+  });
 }
 
-// 여러 팀 점수 동시 업데이트 (한바퀴 보너스용 - 배치 처리)
+// 여러 팀 점수 동시 업데이트
 export async function updateMultipleTeamScores(
   sessionId: string,
   teamUpdates: { teamId: string; scoreChange: number }[]
@@ -461,63 +393,96 @@ export async function getTerritoryOwner(
 }
 
 // ========================
-// 실시간 리스너 함수
+// 실시간 리스너 함수 (폴링 기반)
 // ========================
 
-// 세션 실시간 구독
+const POLL_INTERVAL = 2000; // 2초 간격 폴링
+
+// 세션 실시간 구독 (폴링)
 export function subscribeToSession(
   sessionId: string,
   callback: (session: Session | null) => void
 ): Unsubscribe {
-  const sessionRef = doc(db, SESSIONS_COLLECTION, sessionId);
+  let active = true;
+  let lastJson = '';
 
-  return onSnapshot(sessionRef, (snapshot) => {
-    if (snapshot.exists()) {
-      const data = snapshot.data();
-      callback({
-        ...data,
-        createdAt: data.createdAt instanceof Timestamp
-          ? data.createdAt.toMillis()
-          : data.createdAt
-      } as Session);
-    } else {
-      callback(null);
+  const poll = async () => {
+    if (!active) return;
+    try {
+      const session = await getSession(sessionId);
+      const json = JSON.stringify(session);
+      if (json !== lastJson) {
+        lastJson = json;
+        callback(session);
+      }
+    } catch (e) {
+      console.error('세션 폴링 오류:', e);
     }
-  });
+    if (active) {
+      setTimeout(poll, POLL_INTERVAL);
+    }
+  };
+
+  poll();
+
+  return () => { active = false; };
 }
 
-// 게임 상태 실시간 구독
+// 게임 상태 실시간 구독 (폴링)
 export function subscribeToGameState(
   sessionId: string,
   callback: (state: GameState | null) => void
 ): Unsubscribe {
-  const stateRef = doc(db, GAME_STATE_COLLECTION, sessionId);
+  let active = true;
+  let lastJson = '';
 
-  return onSnapshot(stateRef, (snapshot) => {
-    if (snapshot.exists()) {
-      callback(snapshot.data() as GameState);
-    } else {
-      callback(null);
+  const poll = async () => {
+    if (!active) return;
+    try {
+      const state = await getGameState(sessionId);
+      const json = JSON.stringify(state);
+      if (json !== lastJson) {
+        lastJson = json;
+        callback(state);
+      }
+    } catch (e) {
+      console.error('게임 상태 폴링 오류:', e);
     }
-  });
+    if (active) {
+      setTimeout(poll, POLL_INTERVAL);
+    }
+  };
+
+  poll();
+
+  return () => { active = false; };
 }
 
-// 모든 세션 실시간 구독
+// 모든 세션 실시간 구독 (폴링)
 export function subscribeToAllSessions(
   callback: (sessions: Session[]) => void
 ): Unsubscribe {
-  const sessionsRef = collection(db, SESSIONS_COLLECTION);
+  let active = true;
+  let lastJson = '';
 
-  return onSnapshot(sessionsRef, (snapshot) => {
-    const sessions = snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        ...data,
-        createdAt: data.createdAt instanceof Timestamp
-          ? data.createdAt.toMillis()
-          : data.createdAt
-      } as Session;
-    });
-    callback(sessions);
-  });
+  const poll = async () => {
+    if (!active) return;
+    try {
+      const sessions = await getAllSessions();
+      const json = JSON.stringify(sessions);
+      if (json !== lastJson) {
+        lastJson = json;
+        callback(sessions);
+      }
+    } catch (e) {
+      console.error('전체 세션 폴링 오류:', e);
+    }
+    if (active) {
+      setTimeout(poll, POLL_INTERVAL);
+    }
+  };
+
+  poll();
+
+  return () => { active = false; };
 }
