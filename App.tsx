@@ -312,6 +312,25 @@ const App: React.FC = () => {
 
     if (isFirebaseConfigured) {
       const unsubscribe = firestoreService.subscribeToAllSessions((firebaseSessions) => {
+        // 로컬에만 있는 세션을 Firebase에 자동 동기화
+        setSessions(prev => {
+          const localOnlySessions = prev.filter(
+            localSession => !firebaseSessions.find(fs => fs.id === localSession.id)
+          );
+          if (localOnlySessions.length > 0) {
+            console.log('[All Sessions] 로컬 전용 세션을 Firebase에 동기화:', localOnlySessions.map(s => s.id));
+            localOnlySessions.forEach(async (session) => {
+              try {
+                await firestoreService.createSession(session);
+                console.log('[All Sessions] Firebase 동기화 완료:', session.id);
+              } catch (error) {
+                console.error('[All Sessions] Firebase 동기화 실패:', session.id, error);
+              }
+            });
+          }
+          return prev; // 동기화 시 현재 상태 유지 (Firebase 구독이 다시 트리거됨)
+        });
+
         // 현재 세션이 있으면 항상 보호 로직 적용
         if (currentSessionId) {
           // 로컬 작업 진행 중이면 현재 세션 데이터는 보호
@@ -751,11 +770,14 @@ const App: React.FC = () => {
           gameLogs: [],
           lastUpdated: Date.now()
         });
+        console.log('[Create Session] Firebase 세션 생성 성공:', newSessionId);
         // Firebase 구독이 자동으로 세션을 추가하므로 여기서는 추가하지 않음
         return;
       } catch (error) {
-        console.error('Firebase 세션 생성 실패:', error);
-        throw error; // 에러를 상위로 전달
+        console.error('Firebase 세션 생성 실패, 로컬로 저장:', error);
+        // Firebase 실패 시에도 로컬에 세션 추가 (나중에 자동 동기화됨)
+        setSessions(prev => [newSession, ...prev]);
+        return;
       }
     }
 
