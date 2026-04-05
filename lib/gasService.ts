@@ -1,7 +1,7 @@
 // Google Apps Script 백엔드 서비스
-// Code.gs를 Google Apps Script에 배포한 후, 아래 URL을 웹앱 URL로 교체하세요.
+// Vercel 서버리스 함수(/api/gas)를 프록시로 사용하여 CORS 문제 해결
 
-const GAS_URL = import.meta.env.VITE_GAS_URL || '';
+const PROXY_URL = '/api/gas';
 
 interface GasResponse<T = unknown> {
   success: boolean;
@@ -10,14 +10,10 @@ interface GasResponse<T = unknown> {
 }
 
 async function postToGas<T = unknown>(payload: Record<string, unknown>): Promise<GasResponse<T>> {
-  if (!GAS_URL) {
-    console.warn('GAS_URL이 설정되지 않았습니다. VITE_GAS_URL 환경변수를 설정하세요.');
-    return { success: false, error: 'GAS_URL not configured' };
-  }
   try {
-    const response = await fetch(GAS_URL, {
+    const response = await fetch(PROXY_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
@@ -31,12 +27,8 @@ async function postToGas<T = unknown>(payload: Record<string, unknown>): Promise
 }
 
 async function getFromGas<T = unknown>(params: Record<string, string>): Promise<GasResponse<T>> {
-  if (!GAS_URL) {
-    console.warn('GAS_URL이 설정되지 않았습니다. VITE_GAS_URL 환경변수를 설정하세요.');
-    return { success: false, error: 'GAS_URL not configured' };
-  }
   try {
-    const url = new URL(GAS_URL);
+    const url = new URL(PROXY_URL, window.location.origin);
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
     const response = await fetch(url.toString());
     if (!response.ok) {
