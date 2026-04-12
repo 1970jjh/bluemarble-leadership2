@@ -305,83 +305,48 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // --- Firebase: 세션 실시간 구독 ---
+  // --- Google Sheets: 세션 실시간 구독 (폴링) ---
   useEffect(() => {
-    // Firebase가 설정되어 있으면 실시간으로 세션 목록 구독
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
-
-    if (isFirebaseConfigured) {
-      const unsubscribe = firestoreService.subscribeToAllSessions((firebaseSessions) => {
-        // 로컬에만 있는 세션을 Firebase에 자동 동기화
-        setSessions(prev => {
-          const localOnlySessions = prev.filter(
-            localSession => !firebaseSessions.find(fs => fs.id === localSession.id)
-          );
-          if (localOnlySessions.length > 0) {
-            console.log('[All Sessions] 로컬 전용 세션을 Firebase에 동기화:', localOnlySessions.map(s => s.id));
-            localOnlySessions.forEach(async (session) => {
-              try {
-                await firestoreService.createSession(session);
-                console.log('[All Sessions] Firebase 동기화 완료:', session.id);
-              } catch (error) {
-                console.error('[All Sessions] Firebase 동기화 실패:', session.id, error);
-              }
-            });
-          }
-          return prev; // 동기화 시 현재 상태 유지 (Firebase 구독이 다시 트리거됨)
-        });
-
-        // 현재 세션이 있으면 항상 보호 로직 적용
+    const unsubscribe = firestoreService.subscribeToAllSessions((remoteSessions) => {
+        // 현재 세션이 있으면 보호 로직 적용
         if (currentSessionId) {
-          // 로컬 작업 진행 중이면 현재 세션 데이터는 보호
           if (localOperationInProgress.current) {
             console.log('[All Sessions] 로컬 작업 진행 중 - 현재 세션 보호');
             setSessions(prev => {
               const currentSession = prev.find(s => s.id === currentSessionId);
-              const otherSessions = firebaseSessions.filter(s => s.id !== currentSessionId);
+              const otherSessions = remoteSessions.filter(s => s.id !== currentSessionId);
               return currentSession
                 ? [...otherSessions, currentSession]
-                : firebaseSessions;
+                : remoteSessions;
             });
             return;
           }
 
-          // Firebase에서 받은 현재 세션의 lastUpdated가 로컬 타임스탬프보다 이전이면 보호
-          const firebaseCurrentSession = firebaseSessions.find(s => s.id === currentSessionId);
-          if (firebaseCurrentSession?.lastUpdated &&
-              firebaseCurrentSession.lastUpdated < localOperationTimestamp.current) {
-            console.log('[All Sessions] 오래된 현재 세션 데이터 보호:', {
-              firebaseLastUpdated: firebaseCurrentSession.lastUpdated,
-              localTimestamp: localOperationTimestamp.current
-            });
+          const remoteCurrentSession = remoteSessions.find(s => s.id === currentSessionId);
+          if (remoteCurrentSession?.lastUpdated &&
+              remoteCurrentSession.lastUpdated < localOperationTimestamp.current) {
             setSessions(prev => {
               const currentSession = prev.find(s => s.id === currentSessionId);
-              const otherSessions = firebaseSessions.filter(s => s.id !== currentSessionId);
+              const otherSessions = remoteSessions.filter(s => s.id !== currentSessionId);
               return currentSession
                 ? [...otherSessions, currentSession]
-                : firebaseSessions;
+                : remoteSessions;
             });
             return;
           }
         }
 
-        console.log('[All Sessions] 전체 세션 목록 수신:', firebaseSessions.map(s => ({
-          id: s.id,
-          name: s.name,
-          hasCustomCards: !!s.customCards,
-          customCardsCount: s.customCards?.length || 0
-        })));
-        setSessions(firebaseSessions);
+        console.log('[All Sessions] 세션 목록 수신:', remoteSessions.length);
+        setSessions(remoteSessions);
       });
       return () => unsubscribe();
-    }
   }, [currentSessionId]);
 
   // --- Firebase: 현재 세션 실시간 구독 (참가자/관리자 동기화) ---
   useEffect(() => {
     if (!currentSessionId) return;
 
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (!isFirebaseConfigured) return;
 
     console.log('[Session Subscribe] 세션 구독 시작:', currentSessionId);
@@ -434,7 +399,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!currentSessionId) return;
 
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (!isFirebaseConfigured) return;
 
     console.log('[Firebase] 게임 상태 구독 시작:', currentSessionId);
@@ -612,7 +577,7 @@ const App: React.FC = () => {
   const saveGameStateToFirebase = useCallback(async () => {
     if (!currentSessionId) return;
 
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (!isFirebaseConfigured) return;
 
     try {
@@ -690,7 +655,7 @@ const App: React.FC = () => {
 
           // Firebase gameState의 currentCard도 업데이트
           if (currentSessionId) {
-            const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+            const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
             if (isFirebaseConfigured) {
               firestoreService.updateGameState(currentSessionId, {
                 currentCard: updatedCard,
@@ -743,7 +708,7 @@ const App: React.FC = () => {
     };
 
     // Firebase에 저장 (설정되어 있으면)
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (isFirebaseConfigured) {
       try {
         await firestoreService.createSession(newSession);
@@ -786,7 +751,7 @@ const App: React.FC = () => {
   };
 
   const handleDeleteSession = async (sessionId: string) => {
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (isFirebaseConfigured) {
       try {
         await firestoreService.deleteSession(sessionId);
@@ -801,7 +766,7 @@ const App: React.FC = () => {
   };
 
   const handleUpdateSessionStatus = async (sessionId: string, status: SessionStatus) => {
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (isFirebaseConfigured) {
       try {
         await firestoreService.updateSessionStatus(sessionId, status);
@@ -852,7 +817,7 @@ const App: React.FC = () => {
     soundEffects.playGameStart();
 
     // Firebase에 게임 상태 저장
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (isFirebaseConfigured && currentSessionId) {
       try {
         await firestoreService.updateGameState(currentSessionId, {
@@ -889,7 +854,7 @@ const App: React.FC = () => {
     setGamePhase(GamePhase.Paused);
     soundEffects.playPause();
 
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (isFirebaseConfigured && currentSessionId) {
       try {
         await firestoreService.updateGameState(currentSessionId, {
@@ -917,7 +882,7 @@ const App: React.FC = () => {
   const handleResumeGame = async () => {
     setGamePhase(phaseBeforePause || GamePhase.Idle);
 
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (isFirebaseConfigured && currentSessionId) {
       try {
         await firestoreService.updateGameState(currentSessionId, {
@@ -948,7 +913,7 @@ const App: React.FC = () => {
 
     try {
       // Firebase에서 세션 찾기
-      const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+      const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
 
       let foundSession: Session | null = null;
 
@@ -1011,7 +976,7 @@ const App: React.FC = () => {
     let sessionToUpdate = currentSession;
 
     if (!sessionToUpdate && currentSessionId) {
-      const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+      const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
       if (isFirebaseConfigured) {
         try {
           sessionToUpdate = await firestoreService.getSession(currentSessionId);
@@ -1043,7 +1008,7 @@ const App: React.FC = () => {
     });
 
     // Firebase에 저장
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (isFirebaseConfigured) {
       try {
         await firestoreService.updateTeams(currentSessionId!, updatedTeams);
@@ -1086,7 +1051,7 @@ const App: React.FC = () => {
     }));
 
     // Firebase에 저장 (설정되어 있으면) - lastUpdated 포함
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (isFirebaseConfigured) {
       try {
         await firestoreService.updateSession(currentSessionId, {
@@ -1136,7 +1101,7 @@ const App: React.FC = () => {
     console.log('[Card Save] 카드 저장 시작:', { sessionId: currentSessionId, cardCount: cleanedCards.length });
 
     // Firebase에 저장 (설정되어 있으면)
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (isFirebaseConfigured) {
       try {
         await firestoreService.updateSession(currentSessionId, updateData);
@@ -1193,7 +1158,7 @@ const App: React.FC = () => {
 
     // Firebase에도 로그 저장
     if (currentSessionId) {
-      const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+      const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
       if (isFirebaseConfigured) {
         try {
           await firestoreService.addGameLog(currentSessionId, logEntry);
@@ -1258,7 +1223,7 @@ const App: React.FC = () => {
     updateTeamsInSession(updatedTeams);
 
     // Firebase에 다음 턴 상태 저장
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (isFirebaseConfigured && currentSessionId) {
       try {
         await firestoreService.updateGameState(currentSessionId, {
@@ -1331,7 +1296,7 @@ const App: React.FC = () => {
     // Firebase 업데이트
     await updateTeamsInSession(resetTeams);
 
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (isFirebaseConfigured) {
       try {
         await firestoreService.updateGameState(currentSessionId, {
@@ -1530,7 +1495,7 @@ const App: React.FC = () => {
         setShowCardModal(true);
 
         // 즉시 Firebase에 게임 상태 저장 (팀원들이 카드를 볼 수 있도록)
-        const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+        const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
         if (isFirebaseConfigured && currentSessionId) {
           firestoreService.updateGameState(currentSessionId, {
             sessionId: currentSessionId,
@@ -1635,7 +1600,7 @@ const App: React.FC = () => {
     if (!teamToMove) return;
 
     // Firebase에 주사위 결과와 Moving 상태 저장 (실패해도 로컬 게임은 계속 진행)
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (isFirebaseConfigured && currentSessionId) {
       firestoreService.updateGameState(currentSessionId, {
         sessionId: currentSessionId,
@@ -1701,7 +1666,7 @@ const App: React.FC = () => {
         });
 
         // Firebase 업데이트 (비동기로 처리)
-        const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+        const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
         if (isFirebaseConfigured && currentSessionId) {
           firestoreService.updateTeams(currentSessionId, updatedTeams).catch(err =>
             console.warn('Firebase 위치 업데이트 실패:', err)
@@ -1958,7 +1923,7 @@ const App: React.FC = () => {
       setShowCardModal(true);
 
       // Firebase에 게임 상태 저장
-      const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+      const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
       if (isFirebaseConfigured && currentSessionId) {
         firestoreService.updateGameState(currentSessionId, {
           sessionId: currentSessionId,
@@ -2009,7 +1974,7 @@ const App: React.FC = () => {
         });
 
         // Firebase 업데이트 (비동기로 처리)
-        const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+        const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
         if (isFirebaseConfigured && currentSessionId) {
           firestoreService.updateTeams(currentSessionId, updatedTeams).catch(err =>
             console.warn('Firebase 위치 업데이트 실패:', err)
@@ -2067,7 +2032,7 @@ const App: React.FC = () => {
     if (directReasoning !== undefined) setSharedReasoning(directReasoning);
 
     // Firebase에 팀 입력 저장 (AI 결과 없이)
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (isFirebaseConfigured && currentSessionId) {
       try {
         await firestoreService.updateGameState(currentSessionId, {
@@ -2136,7 +2101,7 @@ const App: React.FC = () => {
     }));
 
     // Firebase에 저장
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (isFirebaseConfigured) {
       try {
         await firestoreService.updateTeamResponse(currentSessionId, teamId, {
@@ -2166,7 +2131,7 @@ const App: React.FC = () => {
 
     setIsResponsesRevealed(true);
 
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (isFirebaseConfigured) {
       try {
         await firestoreService.setResponsesRevealed(currentSessionId, true);
@@ -2188,7 +2153,7 @@ const App: React.FC = () => {
     setIsComparingTeams(true);
 
     // Firebase에 분석 중 상태 저장
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (isFirebaseConfigured) {
       await firestoreService.updateGameState(currentSessionId, {
         isAnalyzing: true
@@ -2532,7 +2497,7 @@ ${evaluationGuidelines}
         }));
 
         // Firebase에 영토 소유권 저장 (새로고침 시에도 유지되도록)
-        const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+        const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
         if (isFirebaseConfigured && currentSessionId) {
           firestoreService.updateTerritoryOwnership(
             currentSessionId,
@@ -2619,7 +2584,7 @@ ${evaluationGuidelines}
     });
 
     // Firebase 업데이트
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (isFirebaseConfigured) {
       await firestoreService.resetTeamResponses(currentSessionId);
       await firestoreService.updateGameState(currentSessionId, {
@@ -2653,7 +2618,7 @@ ${evaluationGuidelines}
     setMySpectatorVote(choice);
 
     // Firebase에 투표 업데이트 (팀 이름 포함)
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (isFirebaseConfigured) {
       try {
         await firestoreService.updateSpectatorVote(currentSessionId, choice.id, previousVoteId, voterTeamName);
@@ -2960,7 +2925,7 @@ ${evaluationGuidelines}
     });
 
     // 3. Firebase에 Idle 상태 저장
-    const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
     if (isFirebaseConfigured && currentSessionId) {
       try {
         await firestoreService.updateGameState(currentSessionId, {
