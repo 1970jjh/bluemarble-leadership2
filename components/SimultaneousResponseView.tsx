@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GameCard, Choice, Team, TeamResponse, AIComparativeResult } from '../types';
+// Note: Choice is kept in imports for onSubmit callback signature compatibility
 import { Send, CheckCircle2, Clock, Trophy, Users, Eye, Loader2, X, LogOut } from 'lucide-react';
 
 interface SimultaneousResponseViewProps {
@@ -27,13 +28,12 @@ const SimultaneousResponseView: React.FC<SimultaneousResponseViewProps> = ({
   onClose,
   onLogout
 }) => {
-  const [selectedChoice, setSelectedChoice] = useState<Choice | null>(myResponse?.selectedChoice || null);
   const [reasoning, setReasoning] = useState(myResponse?.reasoning || '');
   const [isSubmitting, setIsSubmitting] = useState(false);  // 제출 중 상태
   const [localSubmitted, setLocalSubmitted] = useState(false);  // 로컬 제출 완료 상태
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const isOpenEnded = !card.choices || card.choices.length === 0;
+  // 항상 자유 서술 모드 (선택지 제거)
   const isSubmitted = myResponse?.isSubmitted || localSubmitted;  // Firebase 또는 로컬 상태
 
   useEffect(() => {
@@ -44,11 +44,10 @@ const SimultaneousResponseView: React.FC<SimultaneousResponseViewProps> = ({
 
   const handleSubmit = () => {
     if (isSubmitting || isSubmitted) return;  // 중복 제출 방지
-    if (isOpenEnded && !reasoning.trim()) return;
-    if (!isOpenEnded && (!selectedChoice || !reasoning.trim())) return;
+    if (!reasoning.trim()) return;
 
     setIsSubmitting(true);
-    onSubmit(selectedChoice, reasoning);
+    onSubmit(null, reasoning);
 
     // 즉시 로컬 상태 업데이트 (Firebase 응답 기다리지 않음)
     setTimeout(() => {
@@ -158,20 +157,10 @@ const SimultaneousResponseView: React.FC<SimultaneousResponseViewProps> = ({
                       </span>
                     </div>
 
-                    {/* 선택 옵션 */}
-                    {ranking.selectedChoice && (
-                      <div className="mb-2 p-2 bg-white/60 rounded-lg">
-                        <span className="text-sm font-bold text-gray-600">선택: </span>
-                        <span className="text-base font-bold text-blue-800 bg-blue-100 px-2 py-1 rounded">
-                          {ranking.selectedChoice.id}. {ranking.selectedChoice.text}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* 선택 이유 */}
+                    {/* 서술 응답 내용 */}
                     {ranking.reasoning && (
                       <div className="mb-2 p-2 bg-white/60 rounded-lg">
-                        <span className="text-sm font-bold text-gray-600">선택 이유: </span>
+                        <span className="text-sm font-bold text-gray-600">응답 내용: </span>
                         <p className="text-base text-gray-800 mt-1">{ranking.reasoning}</p>
                       </div>
                     )}
@@ -276,54 +265,33 @@ const SimultaneousResponseView: React.FC<SimultaneousResponseViewProps> = ({
             </div>
           )}
 
-          {/* 입력 폼 (제출 전) */}
+          {/* 입력 폼 (제출 전) - 자유 서술 */}
           {!isSubmitted && !aiResult && (
             <>
-              {/* 옵션 선택 */}
-              {!isOpenEnded && card.choices && (
-                <div className="mb-4">
-                  <h3 className="text-sm font-bold text-gray-700 uppercase mb-3">1. 선택</h3>
-                  <div className="space-y-2">
-                    {card.choices.map(choice => (
-                      <button
-                        key={choice.id}
-                        onClick={() => setSelectedChoice(choice)}
-                        className={`w-full p-4 text-left border-4 transition-all ${
-                          selectedChoice?.id === choice.id
-                            ? 'bg-blue-100 border-blue-600 shadow-md'
-                            : 'bg-white border-gray-300 hover:border-gray-400'
-                        }`}
-                      >
-                        <span className={`inline-block px-3 py-1 text-sm font-bold mr-2 ${
-                          selectedChoice?.id === choice.id ? 'bg-blue-600 text-white' : 'bg-gray-200'
-                        }`}>
-                          {choice.id}
-                        </span>
-                        <span className="font-medium">{choice.text}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {/* 안내 문구 */}
+              <div className="mb-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-4 border-blue-400 p-4 rounded-lg">
+                <h3 className="text-lg font-black text-blue-800 mb-1">나는 어떻게 할 것인가?</h3>
+                <p className="text-sm font-medium text-blue-700">자신의 행동과 이유를 작성해주세요!</p>
+              </div>
 
-              {/* 선택 이유 */}
+              {/* 서술 입력란 */}
               <div className="mb-4">
-                <h3 className="text-sm font-bold text-gray-700 uppercase mb-3">
-                  {isOpenEnded ? '답변 작성' : '2. 선택 이유'}
-                </h3>
                 <textarea
                   ref={textareaRef}
                   value={reasoning}
                   onChange={(e) => setReasoning(e.target.value)}
-                  placeholder={isOpenEnded ? "자유롭게 답변을 작성하세요..." : "왜 이 선택을 했는지 설명해주세요..."}
-                  className="w-full p-4 border-4 border-gray-300 focus:border-blue-500 focus:outline-none resize-none h-32 font-medium"
+                  placeholder="이 상황에서 나라면 어떻게 할 것인지, 그 이유와 함께 자유롭게 작성해주세요..."
+                  className="w-full p-4 border-4 border-gray-300 focus:border-blue-500 focus:outline-none resize-none h-40 font-medium text-base"
                 />
+                <div className="text-right text-sm text-gray-500 mt-1">
+                  {reasoning.length}자
+                </div>
               </div>
 
               {/* 제출 버튼 */}
               <button
                 onClick={handleSubmit}
-                disabled={isSubmitting || (isOpenEnded ? !reasoning.trim() : !selectedChoice || !reasoning.trim())}
+                disabled={isSubmitting || !reasoning.trim()}
                 className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white text-xl font-black uppercase border-4 border-black flex items-center justify-center gap-3 transition-all shadow-hard"
               >
                 {isSubmitting ? (

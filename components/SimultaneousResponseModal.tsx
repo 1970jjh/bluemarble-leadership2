@@ -74,17 +74,13 @@ const SimultaneousResponseModal: React.FC<SimultaneousResponseModalProps> = ({
   onClose,
   onApplyScores
 }) => {
-  const [selectedChoice, setSelectedChoice] = useState<Choice | null>(null);
   const [reasoning, setReasoning] = useState('');
   const [hasSubmitted, setHasSubmitted] = useState(false);
-
-  const isOpenEnded = !card.choices || card.choices.length === 0;
 
   // 팀 응답 상태 확인
   useEffect(() => {
     if (currentTeamId && teamResponses[currentTeamId]?.isSubmitted) {
       setHasSubmitted(true);
-      setSelectedChoice(teamResponses[currentTeamId].selectedChoice as Choice | null);
       setReasoning(teamResponses[currentTeamId].reasoning);
     }
   }, [currentTeamId, teamResponses]);
@@ -92,7 +88,6 @@ const SimultaneousResponseModal: React.FC<SimultaneousResponseModalProps> = ({
   // 모달 열릴 때 상태 초기화
   useEffect(() => {
     if (visible && !teamResponses[currentTeamId || '']?.isSubmitted) {
-      setSelectedChoice(null);
       setReasoning('');
       setHasSubmitted(false);
     }
@@ -102,10 +97,9 @@ const SimultaneousResponseModal: React.FC<SimultaneousResponseModalProps> = ({
 
   const handleSubmit = () => {
     if (!currentTeamId) return;
-    if (!isOpenEnded && !selectedChoice) return;
     if (!reasoning.trim()) return;
 
-    onSubmitResponse(currentTeamId, selectedChoice, reasoning);
+    onSubmitResponse(currentTeamId, null, reasoning);
     setHasSubmitted(true);
   };
 
@@ -189,10 +183,10 @@ const SimultaneousResponseModal: React.FC<SimultaneousResponseModalProps> = ({
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <span className="font-bold">{ranking.teamName}</span>
-                        <span className="text-xs bg-gray-200 px-2 py-0.5 rounded">
-                          선택: {ranking.selectedChoice?.id || '주관식'}
-                        </span>
                       </div>
+                      {ranking.reasoning && (
+                        <p className="text-sm text-gray-700 mt-1 bg-gray-50 p-2 rounded italic">"{ranking.reasoning}"</p>
+                      )}
                       <p className="text-sm text-gray-600 mt-1">{ranking.feedback}</p>
                     </div>
                     <div className="text-right">
@@ -271,54 +265,29 @@ const SimultaneousResponseModal: React.FC<SimultaneousResponseModalProps> = ({
                     </div>
                   ) : (
                     <>
-                      {/* 선택지 */}
-                      {!isOpenEnded && card.choices && (
-                        <div>
-                          <h3 className="text-black text-sm font-bold uppercase tracking-widest mb-2">
-                            1. 선택하세요
-                          </h3>
-                          <div className="grid md:grid-cols-3 gap-3">
-                            {card.choices.map((choice) => (
-                              <button
-                                key={choice.id}
-                                onClick={() => setSelectedChoice(choice)}
-                                className={`p-3 border-4 text-left transition-all ${
-                                  selectedChoice?.id === choice.id
-                                    ? 'border-blue-600 bg-blue-50 shadow-md'
-                                    : 'border-black hover:bg-gray-50'
-                                }`}
-                              >
-                                <span className={`inline-block px-2 py-0.5 text-sm font-bold mr-2 ${
-                                  selectedChoice?.id === choice.id
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-black text-white'
-                                }`}>
-                                  {choice.id}
-                                </span>
-                                <span className="font-medium">{choice.text}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                      {/* 안내 문구 */}
+                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-4 border-blue-400 p-4 rounded-lg">
+                        <h3 className="text-lg font-black text-blue-800 mb-1">나는 어떻게 할 것인가?</h3>
+                        <p className="text-sm font-medium text-blue-700">자신의 행동과 이유를 작성해주세요!</p>
+                      </div>
 
-                      {/* 이유 입력 */}
-                      <div className={!isOpenEnded && !selectedChoice ? 'opacity-50 pointer-events-none' : ''}>
-                        <h3 className="text-black text-sm font-bold uppercase tracking-widest mb-2">
-                          {isOpenEnded ? '1. 답변을 작성하세요' : '2. 선택 이유를 작성하세요'}
-                        </h3>
+                      {/* 서술 입력란 */}
+                      <div>
                         <textarea
                           value={reasoning}
                           onChange={(e) => setReasoning(e.target.value)}
-                          placeholder={isOpenEnded ? '답변을 입력하세요...' : '선택 이유를 입력하세요...'}
-                          className="w-full h-28 p-3 border-4 border-black font-medium focus:outline-none focus:bg-yellow-50 resize-none"
+                          placeholder="이 상황에서 나라면 어떻게 할 것인지, 그 이유와 함께 자유롭게 작성해주세요..."
+                          className="w-full h-36 p-3 border-4 border-black font-medium focus:outline-none focus:bg-yellow-50 resize-none"
                         />
+                        <div className="text-right text-sm text-gray-500 mt-1">
+                          {reasoning.length}자
+                        </div>
                       </div>
 
                       {/* 제출 버튼 */}
                       <button
                         onClick={handleSubmit}
-                        disabled={(!isOpenEnded && !selectedChoice) || !reasoning.trim()}
+                        disabled={!reasoning.trim()}
                         className="w-full py-4 bg-blue-900 text-white text-xl font-black uppercase border-4 border-black hover:bg-blue-800 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-3"
                       >
                         <Send size={20} />
@@ -370,13 +339,8 @@ const SimultaneousResponseModal: React.FC<SimultaneousResponseModalProps> = ({
                     >
                       <div className="flex items-center gap-2 mb-2">
                         <span className="font-bold text-lg">{team.name}</span>
-                        {response.selectedChoice && (
-                          <span className="bg-blue-600 text-white text-xs px-2 py-0.5 font-bold">
-                            {response.selectedChoice.id}
-                          </span>
-                        )}
                       </div>
-                      <p className="text-gray-700">{response.reasoning}</p>
+                      <p className="text-gray-700 italic">"{response.reasoning}"</p>
                     </div>
                   );
                 })}

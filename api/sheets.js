@@ -3,6 +3,67 @@ import { google } from 'googleapis';
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
+// ========================
+// 재시도 로직 (GaxiosError 500 / 429 대응)
+// ========================
+const MAX_RETRIES = 3;
+const BASE_DELAY = 1000; // 1초
+
+async function withRetry(fn, label = 'API call') {
+  let lastError;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      const status = err?.code || err?.response?.status || err?.status;
+      const isRetryable = [429, 500, 502, 503].includes(status) ||
+        (err.message && (err.message.includes('RESOURCE_EXHAUSTED') || err.message.includes('quota') || err.message.includes('Quota')));
+
+      if (!isRetryable || attempt === MAX_RETRIES) {
+        console.error(`[API] ${label} failed after ${attempt + 1} attempt(s):`, err.message);
+        throw err;
+      }
+
+      const delay = BASE_DELAY * Math.pow(2, attempt) + Math.random() * 500;
+      console.warn(`[API] ${label} attempt ${attempt + 1} failed (${status || err.message}), retrying in ${Math.round(delay)}ms...`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw lastError;
+}
+
+// ========================
+// 요청 큐 (동시 요청 제한 - 쿼터 보호)
+// ========================
+let activeRequests = 0;
+const MAX_CONCURRENT = 5;
+const requestQueue = [];
+
+function enqueue(fn) {
+  return new Promise((resolve, reject) => {
+    const run = async () => {
+      activeRequests++;
+      try {
+        resolve(await fn());
+      } catch (e) {
+        reject(e);
+      } finally {
+        activeRequests--;
+        if (requestQueue.length > 0) {
+          const next = requestQueue.shift();
+          next();
+        }
+      }
+    };
+    if (activeRequests < MAX_CONCURRENT) {
+      run();
+    } else {
+      requestQueue.push(run);
+    }
+  });
+}
+
 // 서버 측 캐시 (Vercel 서버리스 함수의 warm instance에서 유지)
 const cache = {};
 const CACHE_TTL = 3000; // 3초 캐시
@@ -53,22 +114,31 @@ async function ensureSheet(tabName, headers) {
   if (ensuredSheets[tabName]) return; // 이미 확인됨
   const sheets = getSheets();
   try {
-    const meta = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID, fields: 'sheets.properties.title' });
+    const meta = await withRetry(
+      () => sheets.spreadsheets.get({ spreadsheetId: SHEET_ID, fields: 'sheets.properties.title' }),
+      `ensureSheet(${tabName}).get`
+    );
     const exists = meta.data.sheets.some(s => s.properties.title === tabName);
     if (!exists) {
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId: SHEET_ID,
-        requestBody: {
-          requests: [{ addSheet: { properties: { title: tabName } } }]
-        }
-      });
+      await withRetry(
+        () => sheets.spreadsheets.batchUpdate({
+          spreadsheetId: SHEET_ID,
+          requestBody: {
+            requests: [{ addSheet: { properties: { title: tabName } } }]
+          }
+        }),
+        `ensureSheet(${tabName}).create`
+      );
       // 헤더 행 추가
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: SHEET_ID,
-        range: `${tabName}!A1`,
-        valueInputOption: 'RAW',
-        requestBody: { values: [headers] }
-      });
+      await withRetry(
+        () => sheets.spreadsheets.values.update({
+          spreadsheetId: SHEET_ID,
+          range: `${tabName}!A1`,
+          valueInputOption: 'RAW',
+          requestBody: { values: [headers] }
+        }),
+        `ensureSheet(${tabName}).headers`
+      );
     }
   } catch (e) {
     console.error(`ensureSheet(${tabName}) error:`, e.message);
@@ -86,24 +156,27 @@ async function createSession(session) {
   await ensureSheet('Sessions', SESSION_HEADERS);
   const sheets = getSheets();
   const dataJson = JSON.stringify(session);
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: SHEET_ID,
-    range: 'Sessions!A:I',
-    valueInputOption: 'RAW',
-    requestBody: {
-      values: [[
-        session.id,
-        session.name,
-        session.accessCode,
-        session.status || 'active',
-        session.version || '',
-        session.teamCount || 0,
-        session.createdAt || Date.now(),
-        session.singlePieceMode ? 'true' : 'false',
-        dataJson
-      ]]
-    }
-  });
+  await enqueue(() => withRetry(
+    () => sheets.spreadsheets.values.append({
+      spreadsheetId: SHEET_ID,
+      range: 'Sessions!A:I',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [[
+          session.id,
+          session.name,
+          session.accessCode,
+          session.status || 'active',
+          session.version || '',
+          session.teamCount || 0,
+          session.createdAt || Date.now(),
+          session.singlePieceMode ? 'true' : 'false',
+          dataJson
+        ]]
+      }
+    }),
+    'createSession'
+  ));
   invalidateCache('allSessions');
   return { success: true };
 }
@@ -114,10 +187,13 @@ async function getAllSessions() {
 
   await ensureSheet('Sessions', SESSION_HEADERS);
   const sheets = getSheets();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: 'Sessions!A:I'
-  });
+  const res = await enqueue(() => withRetry(
+    () => sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: 'Sessions!A:I'
+    }),
+    'getAllSessions'
+  ));
   const rows = res.data.values || [];
   if (rows.length <= 1) return [];
 
@@ -159,10 +235,13 @@ async function getSession(sessionId) {
 async function updateSession(sessionId, updates) {
   await ensureSheet('Sessions', SESSION_HEADERS);
   const sheets = getSheets();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: 'Sessions!A:I'
-  });
+  const res = await enqueue(() => withRetry(
+    () => sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: 'Sessions!A:I'
+    }),
+    'updateSession.get'
+  ));
   const rows = res.data.values || [];
   const rowIndex = rows.findIndex((row, i) => i > 0 && row[0] === sessionId);
   if (rowIndex === -1) return { success: false, error: 'Session not found' };
@@ -176,24 +255,27 @@ async function updateSession(sessionId, updates) {
   const updatedSession = { ...existingSession, ...updates };
   const dataJson = JSON.stringify(updatedSession);
 
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: SHEET_ID,
-    range: `Sessions!A${rowIndex + 1}:I${rowIndex + 1}`,
-    valueInputOption: 'RAW',
-    requestBody: {
-      values: [[
-        updatedSession.id || sessionId,
-        updatedSession.name || '',
-        updatedSession.accessCode || '',
-        updatedSession.status || 'active',
-        updatedSession.version || '',
-        updatedSession.teamCount || 0,
-        updatedSession.createdAt || 0,
-        updatedSession.singlePieceMode ? 'true' : 'false',
-        dataJson
-      ]]
-    }
-  });
+  await enqueue(() => withRetry(
+    () => sheets.spreadsheets.values.update({
+      spreadsheetId: SHEET_ID,
+      range: `Sessions!A${rowIndex + 1}:I${rowIndex + 1}`,
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [[
+          updatedSession.id || sessionId,
+          updatedSession.name || '',
+          updatedSession.accessCode || '',
+          updatedSession.status || 'active',
+          updatedSession.version || '',
+          updatedSession.teamCount || 0,
+          updatedSession.createdAt || 0,
+          updatedSession.singlePieceMode ? 'true' : 'false',
+          dataJson
+        ]]
+      }
+    }),
+    'updateSession.update'
+  ));
   invalidateCache('allSessions');
   return { success: true };
 }
@@ -201,21 +283,25 @@ async function updateSession(sessionId, updates) {
 async function deleteSession(sessionId) {
   await ensureSheet('Sessions', SESSION_HEADERS);
   const sheets = getSheets();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: 'Sessions!A:I'
-  });
+  const res = await enqueue(() => withRetry(
+    () => sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: 'Sessions!A:I'
+    }),
+    'deleteSession.get'
+  ));
   const rows = res.data.values || [];
   const rowIndex = rows.findIndex((row, i) => i > 0 && row[0] === sessionId);
   if (rowIndex === -1) return { success: false };
 
-  // 해당 행 클리어
-  await sheets.spreadsheets.values.clear({
-    spreadsheetId: SHEET_ID,
-    range: `Sessions!A${rowIndex + 1}:I${rowIndex + 1}`
-  });
+  await enqueue(() => withRetry(
+    () => sheets.spreadsheets.values.clear({
+      spreadsheetId: SHEET_ID,
+      range: `Sessions!A${rowIndex + 1}:I${rowIndex + 1}`
+    }),
+    'deleteSession.clear'
+  ));
 
-  // GameState도 삭제
   await deleteGameState(sessionId);
   return { success: true };
 }
@@ -227,10 +313,13 @@ async function deleteSession(sessionId) {
 async function updateGameState(sessionId, updates) {
   await ensureSheet('GameState', GAMESTATE_HEADERS);
   const sheets = getSheets();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: 'GameState!A:C'
-  });
+  const res = await enqueue(() => withRetry(
+    () => sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: 'GameState!A:C'
+    }),
+    'updateGameState.get'
+  ));
   const rows = res.data.values || [];
   const rowIndex = rows.findIndex((row, i) => i > 0 && row[0] === sessionId);
 
@@ -245,21 +334,25 @@ async function updateGameState(sessionId, updates) {
   const dataJson = JSON.stringify(mergedState);
 
   if (rowIndex > 0) {
-    // 기존 행 업데이트
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SHEET_ID,
-      range: `GameState!A${rowIndex + 1}:C${rowIndex + 1}`,
-      valueInputOption: 'RAW',
-      requestBody: { values: [[sessionId, dataJson, mergedState.lastUpdated]] }
-    });
+    await enqueue(() => withRetry(
+      () => sheets.spreadsheets.values.update({
+        spreadsheetId: SHEET_ID,
+        range: `GameState!A${rowIndex + 1}:C${rowIndex + 1}`,
+        valueInputOption: 'RAW',
+        requestBody: { values: [[sessionId, dataJson, mergedState.lastUpdated]] }
+      }),
+      'updateGameState.update'
+    ));
   } else {
-    // 새 행 추가
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: SHEET_ID,
-      range: 'GameState!A:C',
-      valueInputOption: 'RAW',
-      requestBody: { values: [[sessionId, dataJson, mergedState.lastUpdated]] }
-    });
+    await enqueue(() => withRetry(
+      () => sheets.spreadsheets.values.append({
+        spreadsheetId: SHEET_ID,
+        range: 'GameState!A:C',
+        valueInputOption: 'RAW',
+        requestBody: { values: [[sessionId, dataJson, mergedState.lastUpdated]] }
+      }),
+      'updateGameState.append'
+    ));
   }
   invalidateCache('gameState');
   return { success: true };
@@ -272,10 +365,13 @@ async function getGameState(sessionId) {
 
   await ensureSheet('GameState', GAMESTATE_HEADERS);
   const sheets = getSheets();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: 'GameState!A:C'
-  });
+  const res = await enqueue(() => withRetry(
+    () => sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: 'GameState!A:C'
+    }),
+    'getGameState'
+  ));
   const rows = res.data.values || [];
   const row = rows.find((r, i) => i > 0 && r[0] === sessionId);
   if (!row || !row[1]) return null;
@@ -291,18 +387,118 @@ async function getGameState(sessionId) {
 async function deleteGameState(sessionId) {
   await ensureSheet('GameState', GAMESTATE_HEADERS);
   const sheets = getSheets();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: 'GameState!A:C'
-  });
+  const res = await enqueue(() => withRetry(
+    () => sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: 'GameState!A:C'
+    }),
+    'deleteGameState.get'
+  ));
   const rows = res.data.values || [];
   const rowIndex = rows.findIndex((r, i) => i > 0 && r[0] === sessionId);
   if (rowIndex > 0) {
-    await sheets.spreadsheets.values.clear({
-      spreadsheetId: SHEET_ID,
-      range: `GameState!A${rowIndex + 1}:C${rowIndex + 1}`
-    });
+    await enqueue(() => withRetry(
+      () => sheets.spreadsheets.values.clear({
+        spreadsheetId: SHEET_ID,
+        range: `GameState!A${rowIndex + 1}:C${rowIndex + 1}`
+      }),
+      'deleteGameState.clear'
+    ));
   }
+  return { success: true };
+}
+
+// ========================
+// TeamResponses CRUD (문항별 팀 응답 행 단위 기록)
+// ========================
+const TEAM_RESPONSES_HEADERS = ['sessionId', 'turn', 'cardTitle', 'teamId', 'teamName', 'response', 'aiEvaluation', 'timestamp'];
+
+async function saveTeamResponseRow(payload) {
+  await ensureSheet('TeamResponses', TEAM_RESPONSES_HEADERS);
+  const sheets = getSheets();
+  const { sessionId, turn, cardTitle, teamId, teamName, response, aiEvaluation, timestamp } = payload;
+  await enqueue(() => withRetry(
+    () => sheets.spreadsheets.values.append({
+      spreadsheetId: SHEET_ID,
+      range: 'TeamResponses!A:H',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [[
+          sessionId || '',
+          turn || 0,
+          cardTitle || '',
+          teamId || '',
+          teamName || '',
+          response || '',
+          aiEvaluation || '',
+          timestamp || Date.now()
+        ]]
+      }
+    }),
+    'saveTeamResponseRow'
+  ));
+  return { success: true };
+}
+
+async function getTeamResponseRows(sessionId) {
+  await ensureSheet('TeamResponses', TEAM_RESPONSES_HEADERS);
+  const sheets = getSheets();
+  const res = await enqueue(() => withRetry(
+    () => sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: 'TeamResponses!A:H'
+    }),
+    'getTeamResponseRows'
+  ));
+  const rows = res.data.values || [];
+  if (rows.length <= 1) return [];
+
+  return rows.slice(1)
+    .filter(row => row[0] === sessionId)
+    .map(row => ({
+      sessionId: row[0],
+      turn: parseInt(row[1]) || 0,
+      cardTitle: row[2] || '',
+      teamId: row[3] || '',
+      teamName: row[4] || '',
+      response: row[5] || '',
+      aiEvaluation: row[6] || '',
+      timestamp: parseInt(row[7]) || 0
+    }));
+}
+
+async function updateTeamResponseAiEvaluation(payload) {
+  await ensureSheet('TeamResponses', TEAM_RESPONSES_HEADERS);
+  const sheets = getSheets();
+  const { sessionId, turn, teamId, aiEvaluation } = payload;
+
+  const res = await enqueue(() => withRetry(
+    () => sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: 'TeamResponses!A:H'
+    }),
+    'updateTeamResponseAiEvaluation.get'
+  ));
+  const rows = res.data.values || [];
+
+  // sessionId + turn + teamId로 매칭되는 행 찾기
+  const rowIndex = rows.findIndex((row, i) =>
+    i > 0 && row[0] === sessionId && String(row[1]) === String(turn) && row[3] === teamId
+  );
+
+  if (rowIndex === -1) return { success: false, error: 'Row not found' };
+
+  // G열(aiEvaluation)만 업데이트
+  await enqueue(() => withRetry(
+    () => sheets.spreadsheets.values.update({
+      spreadsheetId: SHEET_ID,
+      range: `TeamResponses!G${rowIndex + 1}`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [[aiEvaluation || '']] }
+    }),
+    'updateTeamResponseAiEvaluation.update'
+  ));
+
   return { success: true };
 }
 
@@ -352,6 +548,15 @@ export default async function handler(req, res) {
         break;
       case 'getGameState':
         data = await getGameState(payload.sessionId);
+        break;
+      case 'saveTeamResponseRow':
+        data = await saveTeamResponseRow(payload);
+        break;
+      case 'getTeamResponseRows':
+        data = await getTeamResponseRows(payload.sessionId);
+        break;
+      case 'updateTeamResponseAiEvaluation':
+        data = await updateTeamResponseAiEvaluation(payload);
         break;
       default:
         return res.status(400).json({ ok: false, error: `Unknown action: ${action}` });

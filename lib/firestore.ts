@@ -5,18 +5,47 @@ import type { Session, Team, TurnRecord, GamePhase, SessionStatus } from '../typ
 // API 엔드포인트
 const API_URL = '/api/sheets';
 
-// API 호출 헬퍼
+// 클라이언트 측 재시도 로직 (네트워크 오류, 500 대응)
+const CLIENT_MAX_RETRIES = 2;
+const CLIENT_BASE_DELAY = 1500;
+
 async function callAPI(action: string, payload: any = {}): Promise<any> {
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, payload })
-  });
-  const json = await res.json();
-  if (!json.ok) {
-    throw new Error(json.error || `API error: ${action}`);
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= CLIENT_MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, payload })
+      });
+
+      // 5xx 서버 오류 → 재시도
+      if (res.status >= 500 && attempt < CLIENT_MAX_RETRIES) {
+        const delay = CLIENT_BASE_DELAY * Math.pow(2, attempt);
+        console.warn(`[Sheets] ${action} server error ${res.status}, retrying in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+
+      const json = await res.json();
+      if (!json.ok) {
+        throw new Error(json.error || `API error: ${action}`);
+      }
+      return json.data;
+    } catch (err: any) {
+      lastError = err;
+      // 네트워크 오류 (fetch 자체 실패) → 재시도
+      if (err.name === 'TypeError' && attempt < CLIENT_MAX_RETRIES) {
+        const delay = CLIENT_BASE_DELAY * Math.pow(2, attempt);
+        console.warn(`[Sheets] ${action} network error, retrying in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
   }
-  return json.data;
+  throw lastError || new Error(`API call failed: ${action}`);
 }
 
 // Unsubscribe 타입 (폴링 기반)
@@ -224,11 +253,30 @@ export async function updateTeamResponse(
   teamId: string,
   response: TeamResponseData
 ): Promise<void> {
+  // 1. GameState에 실시간 응답 저장 (폴링용)
   const state = await getGameState(sessionId);
   const currentResponses = state?.teamResponses || {};
   await updateGameState(sessionId, {
     teamResponses: { ...currentResponses, [teamId]: response }
   });
+
+  // 2. TeamResponses 탭에 행 단위로 기록 (결과보고서 + 문항별 평가용)
+  try {
+    const currentTurn = state?.currentTurn || 0;
+    const currentCard = state?.currentCard;
+    await callAPI('saveTeamResponseRow', {
+      sessionId,
+      turn: currentTurn,
+      cardTitle: currentCard?.title || '',
+      teamId: response.teamId,
+      teamName: response.teamName,
+      response: response.reasoning || '',
+      aiEvaluation: '',
+      timestamp: response.submittedAt || Date.now()
+    });
+  } catch (err) {
+    console.error('[Sheets] TeamResponses 행 저장 실패 (비치명적):', err);
+  }
 }
 
 export async function resetTeamResponses(sessionId: string): Promise<void> {
@@ -252,6 +300,34 @@ export async function saveAIComparativeResult(
     aiComparativeResult: result,
     isAnalyzing: false
   });
+}
+
+// ========================
+// TeamResponses 탭 (행 단위 기록)
+// ========================
+
+export interface TeamResponseRow {
+  sessionId: string;
+  turn: number;
+  cardTitle: string;
+  teamId: string;
+  teamName: string;
+  response: string;
+  aiEvaluation: string;
+  timestamp: number;
+}
+
+export async function getTeamResponseRows(sessionId: string): Promise<TeamResponseRow[]> {
+  return await callAPI('getTeamResponseRows', { sessionId });
+}
+
+export async function updateTeamResponseAiEvaluation(
+  sessionId: string,
+  turn: number,
+  teamId: string,
+  aiEvaluation: string
+): Promise<void> {
+  await callAPI('updateTeamResponseAiEvaluation', { sessionId, turn, teamId, aiEvaluation });
 }
 
 // ========================

@@ -50,7 +50,7 @@ import { Smartphone, Monitor, QrCode, X, Copy, Check, Settings, BookOpen } from 
 import { QRCodeSVG } from 'qrcode.react';
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Firebase 연동
+// Google Sheets 백엔드 서비스
 import * as firestoreService from './lib/firestore';
 
 type AppView = 'intro' | 'lobby' | 'game' | 'participant';
@@ -175,8 +175,8 @@ const App: React.FC = () => {
   const localOperationInProgress = useRef(false);
   const localOperationTimestamp = useRef(0);
 
-  // Ref to prevent saving data that was just received from Firebase (무한 루프 방지)
-  const isReceivingFromFirebase = useRef(false);
+  // Ref to prevent saving data that was just received from server (무한 루프 방지)
+  const isReceivingFromServer = useRef(false);
   const lastReceivedTimestamp = useRef(0);
   const saveDebounceTimer = useRef<any>(null);
 
@@ -346,8 +346,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!currentSessionId) return;
 
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (!isFirebaseConfigured) return;
+    // Google Sheets 백엔드 구독
 
     console.log('[Session Subscribe] 세션 구독 시작:', currentSessionId);
 
@@ -399,8 +398,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!currentSessionId) return;
 
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (!isFirebaseConfigured) return;
+    // Google Sheets 백엔드 구독
 
     console.log('[Firebase] 게임 상태 구독 시작:', currentSessionId);
 
@@ -440,7 +438,7 @@ const App: React.FC = () => {
         lastReceivedTimestamp.current = stateTimestamp;
 
         // Firebase 수신 플래그 설정 (무한 루프 방지)
-        isReceivingFromFirebase.current = true;
+        isReceivingFromServer.current = true;
 
         // 정상적인 Firebase 상태 동기화
         setGamePhase(state.phase as GamePhase);
@@ -566,7 +564,7 @@ const App: React.FC = () => {
         }
 
         // 짧은 지연 후 플래그 해제 (상태 업데이트가 완료된 후)
-        setTimeout(() => { isReceivingFromFirebase.current = false; }, 100);
+        setTimeout(() => { isReceivingFromServer.current = false; }, 100);
       }
     });
 
@@ -577,8 +575,7 @@ const App: React.FC = () => {
   const saveGameStateToFirebase = useCallback(async () => {
     if (!currentSessionId) return;
 
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (!isFirebaseConfigured) return;
+    // Google Sheets 백엔드 구독
 
     try {
       await firestoreService.updateGameState(currentSessionId, {
@@ -605,7 +602,7 @@ const App: React.FC = () => {
   // 게임 상태 변경 시 Firebase에 저장 (디바운스 적용)
   useEffect(() => {
     // Firebase에서 방금 받은 데이터면 다시 저장하지 않음 (무한 루프 방지)
-    if (isReceivingFromFirebase.current) {
+    if (isReceivingFromServer.current) {
       return;
     }
 
@@ -622,7 +619,7 @@ const App: React.FC = () => {
       }
       // 500ms 디바운스 (빠른 타이핑 중 연속 저장 방지)
       saveDebounceTimer.current = setTimeout(() => {
-        if (!isReceivingFromFirebase.current) {
+        if (!isReceivingFromServer.current) {
           saveGameStateToFirebase();
         }
       }, 500);
@@ -655,8 +652,8 @@ const App: React.FC = () => {
 
           // Firebase gameState의 currentCard도 업데이트
           if (currentSessionId) {
-            const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-            if (isFirebaseConfigured) {
+            // Google Sheets 백엔드에 저장
+            {
               firestoreService.updateGameState(currentSessionId, {
                 currentCard: updatedCard,
                 lastUpdated: Date.now()
@@ -708,8 +705,8 @@ const App: React.FC = () => {
     };
 
     // Firebase에 저장 (설정되어 있으면)
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (isFirebaseConfigured) {
+    // Google Sheets 백엔드에 저장
+    {
       try {
         await firestoreService.createSession(newSession);
         // 새 방의 빈 gameState 문서를 함께 생성 (이전 게임 데이터 잔존 방지)
@@ -751,8 +748,8 @@ const App: React.FC = () => {
   };
 
   const handleDeleteSession = async (sessionId: string) => {
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (isFirebaseConfigured) {
+    // Google Sheets 백엔드에 저장
+    {
       try {
         await firestoreService.deleteSession(sessionId);
         // Firebase 구독이 자동으로 세션을 제거하므로 여기서는 제거하지 않음
@@ -766,8 +763,8 @@ const App: React.FC = () => {
   };
 
   const handleUpdateSessionStatus = async (sessionId: string, status: SessionStatus) => {
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (isFirebaseConfigured) {
+    // Google Sheets 백엔드에 저장
+    {
       try {
         await firestoreService.updateSessionStatus(sessionId, status);
       } catch (error) {
@@ -817,8 +814,8 @@ const App: React.FC = () => {
     soundEffects.playGameStart();
 
     // Firebase에 게임 상태 저장
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (isFirebaseConfigured && currentSessionId) {
+    // Google Sheets 백엔드에 저장
+    if (currentSessionId) {
       try {
         await firestoreService.updateGameState(currentSessionId, {
           sessionId: currentSessionId,
@@ -854,8 +851,8 @@ const App: React.FC = () => {
     setGamePhase(GamePhase.Paused);
     soundEffects.playPause();
 
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (isFirebaseConfigured && currentSessionId) {
+    // Google Sheets 백엔드에 저장
+    if (currentSessionId) {
       try {
         await firestoreService.updateGameState(currentSessionId, {
           sessionId: currentSessionId,
@@ -882,8 +879,8 @@ const App: React.FC = () => {
   const handleResumeGame = async () => {
     setGamePhase(phaseBeforePause || GamePhase.Idle);
 
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (isFirebaseConfigured && currentSessionId) {
+    // Google Sheets 백엔드에 저장
+    if (currentSessionId) {
       try {
         await firestoreService.updateGameState(currentSessionId, {
           sessionId: currentSessionId,
@@ -912,18 +909,8 @@ const App: React.FC = () => {
     setJoinError('');
 
     try {
-      // Firebase에서 세션 찾기
-      const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-
-      let foundSession: Session | null = null;
-
-      if (isFirebaseConfigured) {
-        // Firebase에서 접속 코드로 세션 검색
-        foundSession = await firestoreService.getSessionByAccessCode(accessCode);
-      } else {
-        // 로컬 세션에서 검색
-        foundSession = sessions.find(s => s.accessCode === accessCode) || null;
-      }
+      // Google Sheets에서 세션 찾기
+      const foundSession = await firestoreService.getSessionByAccessCode(accessCode);
 
       if (!foundSession) {
         setJoinError('세션을 찾을 수 없습니다. 접속 코드를 확인해주세요.');
@@ -972,17 +959,14 @@ const App: React.FC = () => {
       return;
     }
 
-    // currentSession이 없으면 Firebase에서 직접 조회
+    // currentSession이 없으면 서버에서 직접 조회
     let sessionToUpdate = currentSession;
 
     if (!sessionToUpdate && currentSessionId) {
-      const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-      if (isFirebaseConfigured) {
-        try {
-          sessionToUpdate = await firestoreService.getSession(currentSessionId);
-        } catch (error) {
-          console.error('세션 조회 실패:', error);
-        }
+      try {
+        sessionToUpdate = await firestoreService.getSession(currentSessionId);
+      } catch (error) {
+        console.error('세션 조회 실패:', error);
       }
     }
 
@@ -1008,8 +992,8 @@ const App: React.FC = () => {
     });
 
     // Firebase에 저장
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (isFirebaseConfigured) {
+    // Google Sheets 백엔드에 저장
+    {
       try {
         await firestoreService.updateTeams(currentSessionId!, updatedTeams);
         console.log('[Firebase] 팀원 추가 완료:', playerName);
@@ -1051,8 +1035,8 @@ const App: React.FC = () => {
     }));
 
     // Firebase에 저장 (설정되어 있으면) - lastUpdated 포함
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (isFirebaseConfigured) {
+    // Google Sheets 백엔드에 저장
+    {
       try {
         await firestoreService.updateSession(currentSessionId, {
           teams: updatedTeams,
@@ -1101,8 +1085,8 @@ const App: React.FC = () => {
     console.log('[Card Save] 카드 저장 시작:', { sessionId: currentSessionId, cardCount: cleanedCards.length });
 
     // Firebase에 저장 (설정되어 있으면)
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (isFirebaseConfigured) {
+    // Google Sheets 백엔드에 저장
+    {
       try {
         await firestoreService.updateSession(currentSessionId, updateData);
         console.log('[Card Save] Firebase 저장 성공:', { cardCount: cleanedCards.length, firstCardTitle: cleanedCards[0]?.title });
@@ -1156,15 +1140,12 @@ const App: React.FC = () => {
     const logEntry = `[${timestamp}] ${message}`;
     setGameLogs(prev => [...prev, logEntry]);
 
-    // Firebase에도 로그 저장
+    // 서버에도 로그 저장
     if (currentSessionId) {
-      const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-      if (isFirebaseConfigured) {
-        try {
-          await firestoreService.addGameLog(currentSessionId, logEntry);
-        } catch (error) {
-          console.error('Firebase 로그 저장 실패:', error);
-        }
+      try {
+        await firestoreService.addGameLog(currentSessionId, logEntry);
+      } catch (error) {
+        console.error('로그 저장 실패:', error);
       }
     }
   }, [currentSessionId]);
@@ -1223,8 +1204,8 @@ const App: React.FC = () => {
     updateTeamsInSession(updatedTeams);
 
     // Firebase에 다음 턴 상태 저장
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (isFirebaseConfigured && currentSessionId) {
+    // Google Sheets 백엔드에 저장
+    if (currentSessionId) {
       try {
         await firestoreService.updateGameState(currentSessionId, {
           phase: GamePhase.Idle,
@@ -1296,8 +1277,8 @@ const App: React.FC = () => {
     // Firebase 업데이트
     await updateTeamsInSession(resetTeams);
 
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (isFirebaseConfigured) {
+    // Google Sheets 백엔드에 저장
+    {
       try {
         await firestoreService.updateGameState(currentSessionId, {
           sessionId: currentSessionId,
@@ -1495,8 +1476,7 @@ const App: React.FC = () => {
         setShowCardModal(true);
 
         // 즉시 Firebase에 게임 상태 저장 (팀원들이 카드를 볼 수 있도록)
-        const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-        if (isFirebaseConfigured && currentSessionId) {
+        if (currentSessionId) {
           firestoreService.updateGameState(currentSessionId, {
             sessionId: currentSessionId,
             phase: GamePhase.Decision,
@@ -1600,8 +1580,8 @@ const App: React.FC = () => {
     if (!teamToMove) return;
 
     // Firebase에 주사위 결과와 Moving 상태 저장 (실패해도 로컬 게임은 계속 진행)
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (isFirebaseConfigured && currentSessionId) {
+    // Google Sheets 백엔드에 저장
+    if (currentSessionId) {
       firestoreService.updateGameState(currentSessionId, {
         sessionId: currentSessionId,
         phase: GamePhase.Moving,
@@ -1666,8 +1646,7 @@ const App: React.FC = () => {
         });
 
         // Firebase 업데이트 (비동기로 처리)
-        const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-        if (isFirebaseConfigured && currentSessionId) {
+        if (currentSessionId) {
           firestoreService.updateTeams(currentSessionId, updatedTeams).catch(err =>
             console.warn('Firebase 위치 업데이트 실패:', err)
           );
@@ -1922,9 +1901,8 @@ const App: React.FC = () => {
       setGamePhase(GamePhase.Decision);
       setShowCardModal(true);
 
-      // Firebase에 게임 상태 저장
-      const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-      if (isFirebaseConfigured && currentSessionId) {
+      // 서버에 게임 상태 저장
+      if (currentSessionId) {
         firestoreService.updateGameState(currentSessionId, {
           sessionId: currentSessionId,
           phase: GamePhase.Decision,
@@ -1974,8 +1952,7 @@ const App: React.FC = () => {
         });
 
         // Firebase 업데이트 (비동기로 처리)
-        const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-        if (isFirebaseConfigured && currentSessionId) {
+        if (currentSessionId) {
           firestoreService.updateTeams(currentSessionId, updatedTeams).catch(err =>
             console.warn('Firebase 위치 업데이트 실패:', err)
           );
@@ -2032,8 +2009,8 @@ const App: React.FC = () => {
     if (directReasoning !== undefined) setSharedReasoning(directReasoning);
 
     // Firebase에 팀 입력 저장 (AI 결과 없이)
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (isFirebaseConfigured && currentSessionId) {
+    // Google Sheets 백엔드에 저장
+    if (currentSessionId) {
       try {
         await firestoreService.updateGameState(currentSessionId, {
           sessionId: currentSessionId,
@@ -2074,14 +2051,9 @@ const App: React.FC = () => {
   ) => {
     if (!currentSessionId || !activeCard) return;
 
-    // 검증
-    const isOpenEnded = !activeCard.choices || activeCard.choices.length === 0;
-    if (isOpenEnded && !reasoning.trim()) {
-      alert('선택 이유를 작성해주세요.');
-      return;
-    }
-    if (!isOpenEnded && (!selectedChoice || !reasoning.trim())) {
-      alert('옵션을 선택하고 선택 이유를 작성해주세요.');
+    // 검증 (자유 서술 모드)
+    if (!reasoning.trim()) {
+      alert('응답 내용을 작성해주세요.');
       return;
     }
 
@@ -2101,8 +2073,8 @@ const App: React.FC = () => {
     }));
 
     // Firebase에 저장
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (isFirebaseConfigured) {
+    // Google Sheets 백엔드에 저장
+    {
       try {
         await firestoreService.updateTeamResponse(currentSessionId, teamId, {
           teamId,
@@ -2131,8 +2103,8 @@ const App: React.FC = () => {
 
     setIsResponsesRevealed(true);
 
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (isFirebaseConfigured) {
+    // Google Sheets 백엔드에 저장
+    {
       try {
         await firestoreService.setResponsesRevealed(currentSessionId, true);
         soundEffects.playDiceResult();  // 공개 효과음
@@ -2153,8 +2125,8 @@ const App: React.FC = () => {
     setIsComparingTeams(true);
 
     // Firebase에 분석 중 상태 저장
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (isFirebaseConfigured) {
+    // Google Sheets 백엔드에 저장
+    {
       await firestoreService.updateGameState(currentSessionId, {
         isAnalyzing: true
       });
@@ -2204,24 +2176,23 @@ const App: React.FC = () => {
       // 세션별 커스텀 AI 평가 지침 사용 (없으면 기본값)
       const evaluationGuidelines = currentSession?.aiEvaluationGuidelines || DEFAULT_AI_EVALUATION_GUIDELINES;
 
-      // Gemini AI에 비교 평가 요청 (강화된 프롬프트)
+      // Gemini AI에 자유 서술 비교 평가 요청
       const prompt = `
 당신은 리더십 교육 게임의 **엄격한** AI 평가자입니다.
-다음 상황에 대해 여러 팀의 응답을 비교 평가해주세요.
+주어진 상황에 대해 각 팀이 자유롭게 서술한 응답을 비교 평가해주세요.
+참가자들은 "나는 어떻게 할 것인가?"라는 질문에 자신의 행동과 이유를 자유롭게 작성했습니다.
 
 ## 카드 정보
 - 제목: ${activeCard.title}
 - 역량: ${activeCard.competency || '일반'}
 - 상황: ${activeCard.situation}
-${activeCard.choices ? `- 선택지:\n${activeCard.choices.map((c, i) => `  ${c.id}. ${c.text}`).join('\n')}` : '- (개방형 질문)'}
 
-## 팀별 응답 (품질 분석 포함)
+## 팀별 서술 응답 (품질 분석 포함)
 ${teamResponsesList.map((resp) => {
   const quality = teamQualityInfo.find(q => q.teamId === resp.teamId);
   return `
 ### ${resp.teamName} (ID: ${resp.teamId})
-- 선택: ${resp.selectedChoice?.text || '(개방형 응답)'}
-- 이유: "${resp.reasoning}"
+- 서술 내용: "${resp.reasoning}"
 - 글자수: ${resp.reasoning?.length || 0}자
 - 품질: ${quality?.qualityHint || '분석 필요'}
 `;
@@ -2238,14 +2209,20 @@ ${evaluationGuidelines}
 - "..." , "네", "응" 등 단답
 - 5글자 미만의 답변
 
-**2. 글자수와 성의에 따른 점수 범위:**
+**2. 서술 응답 평가 기준 (중요도 순):**
+1순위 - 행동의 구체성: 자신이 취할 행동을 구체적으로 서술했는가?
+2순위 - 이유의 논리성: 왜 그렇게 행동하는지 논리적 근거가 있는가?
+3순위 - 상황 맥락 이해: 주어진 상황의 핵심을 파악하고 적절히 대응했는가?
+4순위 - 리더십/팀워크 관점: 리더십, 협업, 소통 등의 역량이 드러나는가?
+
+**3. 글자수와 성의에 따른 점수 범위:**
 - 5글자 미만 → 0~10점 (무조건)
 - 5~15글자 → 10~30점 (매우 짧음)
 - 15~30글자 → 30~50점 (짧음)
 - 30~50글자 → 50~70점 (보통)
 - 50글자 이상 + 논리적 → 70~100점 (우수)
 
-**3. 긴 답변이 짧은 답변보다 항상 높아야 함!**
+**4. 긴 답변이 짧은 답변보다 항상 높아야 함!**
 - 100자 논리적 답변 > 20자 답변 (무조건!)
 - 성의있는 답변이 대충 쓴 답변보다 반드시 높은 점수
 
@@ -2257,7 +2234,7 @@ ${evaluationGuidelines}
       "teamName": "팀이름",
       "rank": 1,
       "score": 100,
-      "feedback": "이 팀의 응답에 대한 구체적인 피드백 (2-3문장)"
+      "feedback": "이 팀의 서술 응답에 대한 구체적인 피드백 (2-3문장, 어떤 점이 좋았고 어떤 점을 보완하면 좋을지)"
     }
   ],
   "guidance": "이 상황에서 가장 좋은 접근 방법에 대한 종합적인 가이드 (3-4문장). '이럴 땐, 이렇게...' 형식으로 시작"
@@ -2276,13 +2253,18 @@ ${evaluationGuidelines}
 - teamId는 위에서 제공된 ID를 정확히 그대로 사용하세요.
 `;
 
-      const result = await genAI.models.generateContent({
+      // 타임아웃 30초 - 무한 로딩 방지
+      const aiPromise = genAI.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: prompt,
         config: {
           responseMimeType: "application/json",
         }
       });
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('AI 분석 타임아웃 (30초)')), 30000)
+      );
+      const result = await Promise.race([aiPromise, timeoutPromise]) as any;
 
       const responseText = result.text || '';
       const parsed = JSON.parse(responseText);
@@ -2382,19 +2364,41 @@ ${evaluationGuidelines}
 
       setAiComparativeResult(comparativeResult);
 
-      // Firebase에 결과 저장
-      if (isFirebaseConfigured) {
-        await firestoreService.saveAIComparativeResult(currentSessionId, {
-          rankings: comparativeResult.rankings,
-          guidance: comparativeResult.guidance,
-          analysisTimestamp: comparativeResult.analysisTimestamp
-        });
+      // Google Sheets에 결과 저장
+      await firestoreService.saveAIComparativeResult(currentSessionId, {
+        rankings: comparativeResult.rankings,
+        guidance: comparativeResult.guidance,
+        analysisTimestamp: comparativeResult.analysisTimestamp
+      });
+
+      // TeamResponses 탭에 AI 평가 결과 기록
+      try {
+        const currentTurn = gameState?.currentTurn || 0;
+        for (const ranking of comparativeResult.rankings) {
+          await firestoreService.updateTeamResponseAiEvaluation(
+            currentSessionId,
+            currentTurn,
+            ranking.teamId,
+            `[${ranking.rank}위 / ${ranking.score}점] ${ranking.feedback}`
+          );
+        }
+      } catch (evalErr) {
+        console.error('TeamResponses AI 평가 저장 실패 (비치명적):', evalErr);
       }
 
       soundEffects.playCelebration();
 
     } catch (error) {
       console.error('AI 비교 평가 실패:', error);
+      alert('AI 분석에 실패했습니다. 다시 시도해주세요.');
+      // 실패 시 isAnalyzing 상태를 false로 되돌려서 무한 로딩 방지
+      try {
+        await firestoreService.updateGameState(currentSessionId, {
+          isAnalyzing: false
+        });
+      } catch (resetErr) {
+        console.error('isAnalyzing 리셋 실패:', resetErr);
+      }
     } finally {
       setIsComparingTeams(false);
     }
@@ -2497,8 +2501,7 @@ ${evaluationGuidelines}
         }));
 
         // Firebase에 영토 소유권 저장 (새로고침 시에도 유지되도록)
-        const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-        if (isFirebaseConfigured && currentSessionId) {
+        if (currentSessionId) {
           firestoreService.updateTerritoryOwnership(
             currentSessionId,
             territorySquareIndex,
@@ -2584,8 +2587,8 @@ ${evaluationGuidelines}
     });
 
     // Firebase 업데이트
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (isFirebaseConfigured) {
+    // Google Sheets 백엔드에 저장
+    {
       await firestoreService.resetTeamResponses(currentSessionId);
       await firestoreService.updateGameState(currentSessionId, {
         phase: GamePhase.Idle,
@@ -2618,8 +2621,8 @@ ${evaluationGuidelines}
     setMySpectatorVote(choice);
 
     // Firebase에 투표 업데이트 (팀 이름 포함)
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (isFirebaseConfigured) {
+    // Google Sheets 백엔드에 저장
+    {
       try {
         await firestoreService.updateSpectatorVote(currentSessionId, choice.id, previousVoteId, voterTeamName);
       } catch (err) {
@@ -2925,8 +2928,8 @@ ${evaluationGuidelines}
     });
 
     // 3. Firebase에 Idle 상태 저장
-    const isFirebaseConfigured = true; // Google Sheets 백엔드 사용
-    if (isFirebaseConfigured && currentSessionId) {
+    // Google Sheets 백엔드에 저장
+    if (currentSessionId) {
       try {
         await firestoreService.updateGameState(currentSessionId, {
           sessionId: currentSessionId,

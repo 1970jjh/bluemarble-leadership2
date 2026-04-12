@@ -72,15 +72,12 @@ const MobileTeamView: React.FC<MobileTeamViewProps> = ({
   }, [activeCard?.id]); // activeCard의 id가 변경될 때만 실행
 
   const currentSquare = BOARD_SQUARES.find(s => s.index === team.position);
-  const isOpenEnded = activeCard && (!activeCard.choices || activeCard.choices.length === 0);
 
-  // 저장 핸들러: 로컬 상태를 서버에 직접 전달 (상태 업데이트 지연 문제 해결)
+  // 저장 핸들러: 자유 서술 내용을 서버에 전달
   const handleSave = () => {
-    if (localChoice || isOpenEnded) {
-      // 로컬 상태를 서버에 동기화 (UI 표시용)
+    if (localReasoning.trim()) {
       onInputChange(localChoice!, localReasoning);
-      // 로컬 상태를 직접 전달하여 즉시 저장 (한 번 클릭으로 저장)
-      onSubmit(localChoice, localReasoning);
+      onSubmit(null, localReasoning);
     }
   };
 
@@ -185,112 +182,47 @@ const MobileTeamView: React.FC<MobileTeamViewProps> = ({
                </div>
              ) : (
                <>
-                 {/* Choices (Only if not open ended) - 로컬 상태 사용 */}
-                 {!isOpenEnded && activeCard.choices && (
-                    <div className="space-y-2 mb-4">
-                      {activeCard.choices.map(choice => {
-                        // 로컬 상태로 선택 여부 확인 (서버 상태가 아닌 로컬 상태)
-                        const isMyChoice = isMyTurn && localChoice?.id === choice.id;
-                        const isMySpectatorVote = !isMyTurn && spectatorVote?.id === choice.id;
-                        const voterTeams = spectatorVotes[choice.id] || [];
-                        const hasOtherVotes = voterTeams.length > 0;
+                 {/* 안내 문구 */}
+                 <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-400 p-3 rounded-lg mb-4">
+                   <h3 className="text-base font-black text-blue-800 mb-1">나는 어떻게 할 것인가?</h3>
+                   <p className="text-xs font-medium text-blue-700">자신의 행동과 이유를 작성해주세요!</p>
+                 </div>
 
-                        return (
-                          <button
-                            key={choice.id}
-                            onClick={() => {
-                              if (isMyTurn) {
-                                // 로컬 상태만 업데이트 (서버에 즉시 전송하지 않음)
-                                setLocalChoice(choice);
-                              } else if (onSpectatorVote) {
-                                // 관람자 투표
-                                onSpectatorVote(choice);
-                              }
-                            }}
-                            className={`w-full text-left p-3 border-2 font-bold text-sm transition-all relative
-                              ${isMyChoice
-                                  ? 'bg-blue-600 text-white border-black transform -translate-y-1 shadow-md'
-                                  : isMySpectatorVote
-                                    ? 'bg-purple-500 text-white border-purple-700 transform -translate-y-1'
-                                    : 'bg-gray-50 border-gray-300 hover:bg-gray-100'}
-                            `}
-                          >
-                            <div className="flex gap-2 items-start">
-                              <span className={`px-2 ${isMyChoice ? 'bg-white text-blue-600' : 'bg-black text-white'} text-xs flex items-center shrink-0`}>{choice.id}</span>
-                              <span className="flex-1">{choice.text}</span>
-                              {isMyChoice && (
-                                <span className="bg-yellow-400 text-black text-[10px] px-2 py-0.5 rounded-full shrink-0 font-bold">
-                                  선택됨
-                                </span>
-                              )}
-                              {isMySpectatorVote && (
-                                <span className="bg-purple-700 text-white text-[10px] px-2 py-0.5 rounded-full shrink-0">
-                                  MY VOTE
-                                </span>
-                              )}
-                            </div>
-                            {/* 다른 팀들의 투표 표시 */}
-                            {hasOtherVotes && (
-                              <div className="mt-2 flex flex-wrap gap-1 pl-7">
-                                {voterTeams.map((voterName, idx) => (
-                                  <span
-                                    key={idx}
-                                    className="bg-purple-100 text-purple-700 text-[10px] px-1.5 py-0.5 rounded font-medium"
-                                  >
-                                    👥 {voterName}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                 )}
-
-                 {/* Open Ended Indicator */}
-                 {isOpenEnded && (
-                    <div className="flex items-center gap-2 text-purple-900 font-bold bg-purple-100 p-3 border-2 border-purple-900 mb-4 text-sm">
-                      <MessageSquare size={16} />
-                      <span>주관식 답변: 자유롭게 작성하세요.</span>
-                    </div>
-                 )}
-
-                 {/* Reasoning Input - 로컬 상태 사용 (동시 사용자 충돌 방지) */}
-                 {(isMyTurn || localChoice || isOpenEnded) && (
+                 {/* 자유 서술 입력란 */}
+                 {isMyTurn ? (
                    <>
                      <textarea
                        value={localReasoning}
-                       onChange={(e) => isMyTurn && setLocalReasoning(e.target.value)}
-                       disabled={!isMyTurn}
-                       placeholder={isMyTurn ? (isOpenEnded ? "답변을 입력하세요..." : "선택 사유를 입력하세요...") : "다른 팀이 사유를 입력중입니다..."}
-                       className="w-full p-2 border-2 border-black font-medium text-sm focus:outline-none focus:bg-yellow-50 mb-3 h-24 resize-none disabled:bg-gray-100 disabled:text-gray-500"
+                       onChange={(e) => setLocalReasoning(e.target.value)}
+                       placeholder="이 상황에서 나라면 어떻게 할 것인지, 그 이유와 함께 자유롭게 작성해주세요..."
+                       className="w-full p-2 border-2 border-black font-medium text-sm focus:outline-none focus:bg-yellow-50 mb-1 h-32 resize-none"
                      />
+                     <div className="text-right text-xs text-gray-500 mb-3">
+                       {localReasoning.length}자
+                     </div>
 
-                     {isMyTurn ? (
-                       <button
-                         onClick={handleSave}
-                         disabled={(!isOpenEnded && !localChoice) || !localReasoning.trim() || isSaving}
-                         className="w-full py-3 bg-blue-600 text-white font-black uppercase flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                       >
-                         {isSaving ? (
-                           <>
-                             <Save className="animate-pulse" size={16} />
-                             저장 중...
-                           </>
-                         ) : (
-                           <>
-                             <Save size={16} />
-                             저장하기
-                           </>
-                         )}
-                       </button>
-                     ) : (
-                        <div className="w-full py-3 bg-gray-200 text-gray-500 font-bold uppercase text-center border-2 border-transparent">
-                           팀 입력 대기 중...
-                        </div>
-                     )}
+                     <button
+                       onClick={handleSave}
+                       disabled={!localReasoning.trim() || isSaving}
+                       className="w-full py-3 bg-blue-600 text-white font-black uppercase flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                     >
+                       {isSaving ? (
+                         <>
+                           <Save className="animate-pulse" size={16} />
+                           저장 중...
+                         </>
+                       ) : (
+                         <>
+                           <Save size={16} />
+                           저장하기
+                         </>
+                       )}
+                     </button>
                    </>
+                 ) : (
+                    <div className="w-full py-3 bg-gray-200 text-gray-500 font-bold uppercase text-center border-2 border-transparent">
+                       팀 입력 대기 중...
+                    </div>
                  )}
                </>
              )}
