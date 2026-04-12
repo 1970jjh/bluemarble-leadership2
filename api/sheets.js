@@ -149,17 +149,51 @@ async function ensureSheet(tabName, headers) {
 // ========================
 // Sessions CRUD
 // ========================
-const SESSION_HEADERS = ['id', 'name', 'accessCode', 'status', 'version', 'teamCount', 'createdAt', 'singlePieceMode', 'dataJson'];
+const SESSION_HEADERS = ['id', 'name', 'accessCode', 'status', 'version', 'teamCount', 'createdAt', 'singlePieceMode', 'dataJson', 'dataJson2', 'dataJson3'];
 const GAMESTATE_HEADERS = ['sessionId', 'dataJson', 'lastUpdated'];
+
+// Google Sheets 셀 한도 (50,000자) 대비 안전 마진
+const CELL_CHAR_LIMIT = 49000;
+
+// base64 이미지를 제거하여 데이터 크기 줄이기
+function stripBase64Images(obj) {
+  if (!obj) return obj;
+  const cleaned = { ...obj };
+  if (cleaned.customBoardImage && cleaned.customBoardImage.startsWith('data:')) {
+    cleaned.customBoardImage = ''; // base64 이미지는 너무 커서 저장 불가
+  }
+  return cleaned;
+}
+
+// 긴 JSON을 여러 청크로 분할
+function splitDataJson(jsonStr) {
+  const chunks = [];
+  for (let i = 0; i < jsonStr.length; i += CELL_CHAR_LIMIT) {
+    chunks.push(jsonStr.substring(i, i + CELL_CHAR_LIMIT));
+  }
+  // 최대 3개 셀 (I, J, K열)
+  while (chunks.length < 3) chunks.push('');
+  return chunks.slice(0, 3);
+}
+
+// 분할된 JSON 청크를 복원
+function joinDataJson(row) {
+  let json = row[8] || '';
+  if (row[9]) json += row[9];
+  if (row[10]) json += row[10];
+  return json;
+}
 
 async function createSession(session) {
   await ensureSheet('Sessions', SESSION_HEADERS);
   const sheets = getSheets();
-  const dataJson = JSON.stringify(session);
+  const cleaned = stripBase64Images(session);
+  const dataJson = JSON.stringify(cleaned);
+  const chunks = splitDataJson(dataJson);
   await enqueue(() => withRetry(
     () => sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
-      range: 'Sessions!A:I',
+      range: 'Sessions!A:K',
       valueInputOption: 'RAW',
       requestBody: {
         values: [[
@@ -171,7 +205,9 @@ async function createSession(session) {
           session.teamCount || 0,
           session.createdAt || Date.now(),
           session.singlePieceMode ? 'true' : 'false',
-          dataJson
+          chunks[0],
+          chunks[1],
+          chunks[2]
         ]]
       }
     }),
@@ -190,7 +226,7 @@ async function getAllSessions() {
   const res = await enqueue(() => withRetry(
     () => sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: 'Sessions!A:I'
+      range: 'Sessions!A:K'
     }),
     'getAllSessions'
   ));
@@ -199,8 +235,8 @@ async function getAllSessions() {
 
   const result = rows.slice(1).map(row => {
     try {
-      // dataJson 컬럼에서 전체 데이터 복원
-      const dataJson = row[8];
+      // dataJson 컬럼에서 전체 데이터 복원 (분할 저장 지원)
+      const dataJson = joinDataJson(row);
       if (dataJson) {
         return JSON.parse(dataJson);
       }
@@ -238,7 +274,7 @@ async function updateSession(sessionId, updates) {
   const res = await enqueue(() => withRetry(
     () => sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: 'Sessions!A:I'
+      range: 'Sessions!A:K'
     }),
     'updateSession.get'
   ));
@@ -246,19 +282,21 @@ async function updateSession(sessionId, updates) {
   const rowIndex = rows.findIndex((row, i) => i > 0 && row[0] === sessionId);
   if (rowIndex === -1) return { success: false, error: 'Session not found' };
 
-  // 기존 데이터 복원 후 업데이트
+  // 기존 데이터 복원 후 업데이트 (분할 저장 지원)
   let existingSession = {};
   try {
-    if (rows[rowIndex][8]) existingSession = JSON.parse(rows[rowIndex][8]);
+    const existingJson = joinDataJson(rows[rowIndex]);
+    if (existingJson) existingSession = JSON.parse(existingJson);
   } catch (e) { /* ignore */ }
 
-  const updatedSession = { ...existingSession, ...updates };
+  const updatedSession = stripBase64Images({ ...existingSession, ...updates });
   const dataJson = JSON.stringify(updatedSession);
+  const chunks = splitDataJson(dataJson);
 
   await enqueue(() => withRetry(
     () => sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
-      range: `Sessions!A${rowIndex + 1}:I${rowIndex + 1}`,
+      range: `Sessions!A${rowIndex + 1}:K${rowIndex + 1}`,
       valueInputOption: 'RAW',
       requestBody: {
         values: [[
@@ -270,7 +308,9 @@ async function updateSession(sessionId, updates) {
           updatedSession.teamCount || 0,
           updatedSession.createdAt || 0,
           updatedSession.singlePieceMode ? 'true' : 'false',
-          dataJson
+          chunks[0],
+          chunks[1],
+          chunks[2]
         ]]
       }
     }),
@@ -286,7 +326,7 @@ async function deleteSession(sessionId) {
   const res = await enqueue(() => withRetry(
     () => sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: 'Sessions!A:I'
+      range: 'Sessions!A:K'
     }),
     'deleteSession.get'
   ));
@@ -297,7 +337,7 @@ async function deleteSession(sessionId) {
   await enqueue(() => withRetry(
     () => sheets.spreadsheets.values.clear({
       spreadsheetId: SHEET_ID,
-      range: `Sessions!A${rowIndex + 1}:I${rowIndex + 1}`
+      range: `Sessions!A${rowIndex + 1}:K${rowIndex + 1}`
     }),
     'deleteSession.clear'
   ));
