@@ -511,7 +511,7 @@ async function getTeamResponseRows(sessionId) {
 async function updateTeamResponseAiEvaluation(payload) {
   await ensureSheet('TeamResponses', TEAM_RESPONSES_HEADERS);
   const sheets = getSheets();
-  const { sessionId, turn, teamId, aiEvaluation } = payload;
+  const { sessionId, cardTitle, teamId, aiEvaluation } = payload;
 
   const res = await enqueue(() => withRetry(
     () => sheets.spreadsheets.values.get({
@@ -522,10 +522,14 @@ async function updateTeamResponseAiEvaluation(payload) {
   ));
   const rows = res.data.values || [];
 
-  // sessionId + turn + teamId로 매칭되는 행 찾기
-  const rowIndex = rows.findIndex((row, i) =>
-    i > 0 && row[0] === sessionId && String(row[1]) === String(turn) && row[3] === teamId
-  );
+  // sessionId + cardTitle + teamId로 매칭되는 행 찾기 (가장 최근 것)
+  let rowIndex = -1;
+  for (let i = rows.length - 1; i > 0; i--) {
+    if (rows[i][0] === sessionId && rows[i][2] === cardTitle && rows[i][3] === teamId) {
+      rowIndex = i;
+      break;
+    }
+  }
 
   if (rowIndex === -1) return { success: false, error: 'Row not found' };
 

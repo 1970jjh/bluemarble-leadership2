@@ -83,7 +83,7 @@ const App: React.FC = () => {
   const [lastMoveInfo, setLastMoveInfo] = useState<{ teamName: string; spaces: number } | null>(null);
   const [isRolling, setIsRolling] = useState(false);
   const [gameLogs, setGameLogs] = useState<string[]>([]);
-  const [turnTimeLeft, setTurnTimeLeft] = useState(120);
+  const [turnTimeLeft, setTurnTimeLeft] = useState(240);
   const [showReport, setShowReport] = useState(false);
   const [isGameStarted, setIsGameStarted] = useState(false);  // 게임 시작 여부
   const [phaseBeforePause, setPhaseBeforePause] = useState<GamePhase>(GamePhase.Idle);  // 일시정지 전 상태
@@ -1176,7 +1176,7 @@ const App: React.FC = () => {
     setIsComparingTeams(false);
 
     setGamePhase(GamePhase.Idle);
-    setTurnTimeLeft(120);
+    setTurnTimeLeft(240);
 
     // Rotate team members
     const updatedTeams = currentSession.teams.map((team, idx) => {
@@ -1270,7 +1270,7 @@ const App: React.FC = () => {
     setCurrentTurnIndex(0);
 
     setDiceValue([1, 1]);
-    setTurnTimeLeft(120);
+    setTurnTimeLeft(240);
     setGameLogs(['[시스템] 게임이 리셋되었습니다.']);
     gameLogsRef.current = ['[시스템] 게임이 리셋되었습니다.'];
 
@@ -2373,11 +2373,11 @@ ${evaluationGuidelines}
 
       // TeamResponses 탭에 AI 평가 결과 기록
       try {
-        const currentTurn = gameState?.currentTurn || 0;
+        const cardTitle = activeCard?.title || '';
         for (const ranking of comparativeResult.rankings) {
           await firestoreService.updateTeamResponseAiEvaluation(
             currentSessionId,
-            currentTurn,
+            cardTitle,
             ranking.teamId,
             `[${ranking.rank}위 / ${ranking.score}점] ${ranking.feedback}`
           );
@@ -2571,7 +2571,7 @@ ${evaluationGuidelines}
     setAiComparativeResult(null);
     setIsComparingTeams(false);
     setGamePhase(GamePhase.Idle);
-    setTurnTimeLeft(120);
+    setTurnTimeLeft(240);
 
     // 다음 턴으로 (턴 버전 증가!)
     const nextTeamIndex = (currentTurnIndex + 1) % currentSession.teams.length;
@@ -2912,7 +2912,7 @@ ${evaluationGuidelines}
     setCustomScoreMultiplier(1);  // 커스텀 모드 점수 배수 초기화
     setIsSharingMode(false);  // 나눔카드 모드 초기화
     setGamePhase(GamePhase.Idle);
-    setTurnTimeLeft(120);
+    setTurnTimeLeft(240);
 
     // 다음 턴으로 (턴 버전 증가!)
     const nextTeamIndex = (currentTurnIndex + 1) % currentSession.teams.length;

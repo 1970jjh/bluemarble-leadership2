@@ -29,12 +29,21 @@ const SimultaneousResponseView: React.FC<SimultaneousResponseViewProps> = ({
   onLogout
 }) => {
   const [reasoning, setReasoning] = useState(myResponse?.reasoning || '');
-  const [isSubmitting, setIsSubmitting] = useState(false);  // 제출 중 상태
-  const [localSubmitted, setLocalSubmitted] = useState(false);  // 로컬 제출 완료 상태
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [localSubmitted, setLocalSubmitted] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const MAX_CHARS = 150;
+
   // 항상 자유 서술 모드 (선택지 제거)
-  const isSubmitted = myResponse?.isSubmitted || localSubmitted;  // Firebase 또는 로컬 상태
+  const isSubmitted = myResponse?.isSubmitted || localSubmitted;
+
+  // 카드가 바뀌면 로컬 상태 리셋 (다음 문항 진입 시 입력창 표시)
+  useEffect(() => {
+    setReasoning('');
+    setLocalSubmitted(false);
+    setIsSubmitting(false);
+  }, [card.id]);
 
   useEffect(() => {
     if (!isSubmitted && !aiResult) {
@@ -274,17 +283,20 @@ const SimultaneousResponseView: React.FC<SimultaneousResponseViewProps> = ({
                 <p className="text-sm font-medium text-blue-700">자신의 행동과 이유를 작성해주세요!</p>
               </div>
 
-              {/* 서술 입력란 */}
+              {/* 서술 입력란 (150자 이내) */}
               <div className="mb-4">
                 <textarea
                   ref={textareaRef}
                   value={reasoning}
-                  onChange={(e) => setReasoning(e.target.value)}
-                  placeholder="이 상황에서 나라면 어떻게 할 것인지, 그 이유와 함께 자유롭게 작성해주세요..."
+                  onChange={(e) => {
+                    if (e.target.value.length <= MAX_CHARS) setReasoning(e.target.value);
+                  }}
+                  maxLength={MAX_CHARS}
+                  placeholder="이 상황에서 나라면 어떻게 할 것인지, 그 이유와 함께 자유롭게 작성해주세요... (150자 이내)"
                   className="w-full p-4 border-4 border-gray-300 focus:border-blue-500 focus:outline-none resize-none h-40 font-medium text-base"
                 />
-                <div className="text-right text-sm text-gray-500 mt-1">
-                  {reasoning.length}자
+                <div className={`text-right text-sm mt-1 ${reasoning.length >= MAX_CHARS ? 'text-red-500 font-bold' : 'text-gray-500'}`}>
+                  {reasoning.length} / {MAX_CHARS}자
                 </div>
               </div>
 

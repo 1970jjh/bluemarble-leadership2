@@ -323,11 +323,11 @@ export async function getTeamResponseRows(sessionId: string): Promise<TeamRespon
 
 export async function updateTeamResponseAiEvaluation(
   sessionId: string,
-  turn: number,
+  cardTitle: string,
   teamId: string,
   aiEvaluation: string
 ): Promise<void> {
-  await callAPI('updateTeamResponseAiEvaluation', { sessionId, turn, teamId, aiEvaluation });
+  await callAPI('updateTeamResponseAiEvaluation', { sessionId, cardTitle, teamId, aiEvaluation });
 }
 
 // ========================

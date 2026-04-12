@@ -77,6 +77,8 @@ const SimultaneousResponseModal: React.FC<SimultaneousResponseModalProps> = ({
   const [reasoning, setReasoning] = useState('');
   const [hasSubmitted, setHasSubmitted] = useState(false);
 
+  const MAX_CHARS = 150;
+
   // 팀 응답 상태 확인
   useEffect(() => {
     if (currentTeamId && teamResponses[currentTeamId]?.isSubmitted) {
@@ -85,13 +87,13 @@ const SimultaneousResponseModal: React.FC<SimultaneousResponseModalProps> = ({
     }
   }, [currentTeamId, teamResponses]);
 
-  // 모달 열릴 때 상태 초기화
+  // 카드가 바뀌면 상태 초기화 (다음 문항)
   useEffect(() => {
-    if (visible && !teamResponses[currentTeamId || '']?.isSubmitted) {
+    if (!teamResponses[currentTeamId || '']?.isSubmitted) {
       setReasoning('');
       setHasSubmitted(false);
     }
-  }, [visible, currentTeamId]);
+  }, [card.id, visible, currentTeamId]);
 
   if (!visible) return null;
 
@@ -271,16 +273,19 @@ const SimultaneousResponseModal: React.FC<SimultaneousResponseModalProps> = ({
                         <p className="text-sm font-medium text-blue-700">자신의 행동과 이유를 작성해주세요!</p>
                       </div>
 
-                      {/* 서술 입력란 */}
+                      {/* 서술 입력란 (150자 이내) */}
                       <div>
                         <textarea
                           value={reasoning}
-                          onChange={(e) => setReasoning(e.target.value)}
-                          placeholder="이 상황에서 나라면 어떻게 할 것인지, 그 이유와 함께 자유롭게 작성해주세요..."
+                          onChange={(e) => {
+                            if (e.target.value.length <= MAX_CHARS) setReasoning(e.target.value);
+                          }}
+                          maxLength={MAX_CHARS}
+                          placeholder="이 상황에서 나라면 어떻게 할 것인지, 그 이유와 함께 자유롭게 작성해주세요... (150자 이내)"
                           className="w-full h-36 p-3 border-4 border-black font-medium focus:outline-none focus:bg-yellow-50 resize-none"
                         />
-                        <div className="text-right text-sm text-gray-500 mt-1">
-                          {reasoning.length}자
+                        <div className={`text-right text-sm mt-1 ${reasoning.length >= MAX_CHARS ? 'text-red-500 font-bold' : 'text-gray-500'}`}>
+                          {reasoning.length} / {MAX_CHARS}자
                         </div>
                       </div>
 

@@ -188,17 +188,20 @@ const MobileTeamView: React.FC<MobileTeamViewProps> = ({
                    <p className="text-xs font-medium text-blue-700">자신의 행동과 이유를 작성해주세요!</p>
                  </div>
 
-                 {/* 자유 서술 입력란 */}
+                 {/* 자유 서술 입력란 (150자 이내) */}
                  {isMyTurn ? (
                    <>
                      <textarea
                        value={localReasoning}
-                       onChange={(e) => setLocalReasoning(e.target.value)}
-                       placeholder="이 상황에서 나라면 어떻게 할 것인지, 그 이유와 함께 자유롭게 작성해주세요..."
+                       onChange={(e) => {
+                         if (e.target.value.length <= 150) setLocalReasoning(e.target.value);
+                       }}
+                       maxLength={150}
+                       placeholder="이 상황에서 나라면 어떻게 할 것인지, 그 이유와 함께 자유롭게 작성해주세요... (150자 이내)"
                        className="w-full p-2 border-2 border-black font-medium text-sm focus:outline-none focus:bg-yellow-50 mb-1 h-32 resize-none"
                      />
-                     <div className="text-right text-xs text-gray-500 mb-3">
-                       {localReasoning.length}자
+                     <div className={`text-right text-xs mb-3 ${localReasoning.length >= 150 ? 'text-red-500 font-bold' : 'text-gray-500'}`}>
+                       {localReasoning.length} / 150자
                      </div>
 
                      <button
