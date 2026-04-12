@@ -2433,8 +2433,24 @@ ${evaluationGuidelines}
     setGamePhase(GamePhase.Idle);
     setTurnTimeLeft(240);
 
-    // 응답 리셋
-    await firestoreService.resetTeamResponses(currentSessionId);
+    // GameState도 즉시 초기화 (폴링이 이전 카드를 복원하지 않도록)
+    try {
+      await firestoreService.updateGameState(currentSessionId, {
+        phase: GamePhase.Idle,
+        currentCard: null,
+        teamResponses: {},
+        isRevealed: false,
+        aiComparativeResult: null,
+        isAnalyzing: false,
+        selectedChoice: null,
+        reasoning: '',
+        isSubmitted: false,
+        isAiProcessing: false,
+        lastUpdated: Date.now()
+      });
+    } catch (err) {
+      console.error('GameState 초기화 실패:', err);
+    }
 
     // 로컬 작업 완료
     localOperationInProgress.current = false;
