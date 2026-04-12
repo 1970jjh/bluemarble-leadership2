@@ -250,6 +250,86 @@ const ReportView: React.FC<ReportViewProps> = ({ teams, onClose, reportGeneratio
     printWindow.onload = () => printWindow.print();
   };
 
+  const handleDownloadHTML = () => {
+    const reportContent = teamReportRef.current;
+    if (!reportContent) return;
+
+    // 최종 순위 섹션도 포함
+    const rankingHTML = rankedTeams.map((team, idx) => `
+      <div style="padding:12px;border:2px solid #000;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;${idx === 0 ? 'background:#fef9c3;' : 'background:#fff;'}">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span style="font-size:24px;font-weight:900;">${idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '#' + (idx + 1)}</span>
+          <span style="font-size:18px;font-weight:900;">${team.name}</span>
+        </div>
+        <span style="font-size:24px;font-weight:900;color:#1e3a8a;">${team.score ?? 100}점</span>
+      </div>
+    `).join('');
+
+    const htmlContent = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blue Marble Gamification - 미션 리포트</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
+    * { font-family: 'Noto Sans KR', sans-serif; box-sizing: border-box; margin: 0; padding: 0; }
+    body { padding: 40px 20px; max-width: 960px; margin: 0 auto; color: #333; line-height: 1.7; background: #f8fafc; }
+    .header { background: #facc15; border: 4px solid #000; padding: 24px 32px; margin-bottom: 32px; }
+    .header h1 { font-size: 28px; font-weight: 900; text-transform: uppercase; letter-spacing: -1px; }
+    .header .subtitle { font-size: 14px; color: #666; margin-top: 4px; }
+    .section { background: #fff; border: 3px solid #000; padding: 24px; margin-bottom: 24px; box-shadow: 4px 4px 0 #000; }
+    .section h2 { font-size: 22px; font-weight: 900; color: #1e3a8a; border-bottom: 3px solid #1e3a8a; padding-bottom: 8px; margin-bottom: 16px; text-transform: uppercase; }
+    .team-section { page-break-inside: avoid; margin-bottom: 32px; padding: 20px; border: 2px solid #e5e7eb; border-radius: 8px; background: #fff; }
+    .team-section h3 { font-size: 18px; font-weight: 900; color: #1e3a8a; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; }
+    th, td { border: 1px solid #d1d5db; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #f3f4f6; font-weight: 700; }
+    tr:nth-child(even) { background: #f9fafb; }
+    .analysis-box { padding: 14px; border-radius: 8px; margin-bottom: 12px; }
+    .pattern { background: #eff6ff; border-left: 4px solid #3b82f6; }
+    .feedback { background: #f0fdf4; border-left: 4px solid #22c55e; }
+    .discussion { background: #faf5ff; border-left: 4px solid #a855f7; }
+    .analysis-box h5 { font-weight: 700; margin-bottom: 6px; }
+    .topic-item { background: #fff; padding: 10px; margin: 6px 0; border-radius: 6px; border: 1px solid #e9d5ff; display: flex; gap: 10px; align-items: flex-start; }
+    .topic-num { background: #a855f7; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+    .footer { text-align: center; color: #999; font-size: 12px; margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; }
+    @media print { body { padding: 10px; background: #fff; } .section { box-shadow: none; } .team-section { page-break-after: always; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🎲 Blue Marble Gamification - 미션 리포트</h1>
+    <div class="subtitle">생성일: ${new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+  </div>
+
+  <div class="section">
+    <h2>🏆 최종 순위</h2>
+    ${rankingHTML}
+  </div>
+
+  <div class="section">
+    <h2>📝 팀별 AI 리포트</h2>
+    ${reportContent.innerHTML}
+  </div>
+
+  <div class="footer">
+    Blue Marble Gamification &copy; ${new Date().getFullYear()} | AI-Powered Leadership Education
+  </div>
+</body>
+</html>`;
+
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `미션리포트_${new Date().toISOString().split('T')[0]}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="fixed inset-0 bg-blue-900/90 z-[60] overflow-y-auto backdrop-blur-sm">
       <div className="container mx-auto p-4 md:p-8 min-h-screen">
@@ -412,9 +492,14 @@ const ReportView: React.FC<ReportViewProps> = ({ teams, onClose, reportGeneratio
               <div className="border-4 border-black p-6 bg-blue-50 shadow-hard">
                 <div className="flex justify-between items-center mb-6 border-b-4 border-black pb-2">
                   <h2 className="text-2xl font-black uppercase">팀별 AI 리포트</h2>
-                  <button onClick={handlePrint} className="px-4 py-2 bg-blue-500 text-white border-2 border-black font-bold flex items-center gap-2 hover:bg-blue-600">
-                    <Printer size={18} /> PDF로 저장/인쇄
-                  </button>
+                  <div className="flex gap-2">
+                    <button onClick={handleDownloadHTML} className="px-4 py-2 bg-green-600 text-white border-2 border-black font-bold flex items-center gap-2 hover:bg-green-700">
+                      <Download size={18} /> HTML 다운로드
+                    </button>
+                    <button onClick={handlePrint} className="px-4 py-2 bg-blue-500 text-white border-2 border-black font-bold flex items-center gap-2 hover:bg-blue-600">
+                      <Printer size={18} /> PDF로 저장/인쇄
+                    </button>
+                  </div>
                 </div>
 
                 <div ref={teamReportRef} className="space-y-8">
