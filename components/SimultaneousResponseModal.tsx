@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GameCard, Choice, Team, TeamColor } from '../types';
 import { TeamResponseData, TeamRankingData, AIComparativeResultData } from '../lib/firestore';
-import { X, Send, Eye, Sparkles, Check, Clock, Loader2, Trophy, Medal, Award } from 'lucide-react';
+import { X, Send, Eye, Sparkles, Check, Clock, Loader2, Trophy, Medal, Award, RefreshCw } from 'lucide-react';
 
 interface SimultaneousResponseModalProps {
   card: GameCard;
@@ -23,6 +23,7 @@ interface SimultaneousResponseModalProps {
   onRunAIAnalysis: () => void;
   onClose: () => void;
   onApplyScores: (rankings: TeamRankingData[]) => void;
+  onRefreshResponses?: () => void;
 }
 
 // 랭킹에 따른 배점 계산 함수
@@ -72,8 +73,10 @@ const SimultaneousResponseModal: React.FC<SimultaneousResponseModalProps> = ({
   onRevealResponses,
   onRunAIAnalysis,
   onClose,
-  onApplyScores
+  onApplyScores,
+  onRefreshResponses
 }) => {
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [reasoning, setReasoning] = useState('');
   const [hasSubmitted, setHasSubmitted] = useState(false);
 
@@ -223,10 +226,26 @@ const SimultaneousResponseModal: React.FC<SimultaneousResponseModalProps> = ({
               {/* 팀 응답 상태 (관리자 뷰) */}
               {isAdmin && (
                 <div className="mb-6 bg-gray-50 border-2 border-gray-300 p-4 rounded-lg">
-                  <h4 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-                    <Clock size={16} />
-                    팀별 응답 현황
-                  </h4>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-bold text-gray-700 flex items-center gap-2">
+                      <Clock size={16} />
+                      팀별 응답 현황
+                    </h4>
+                    {onRefreshResponses && (
+                      <button
+                        onClick={async () => {
+                          setIsRefreshing(true);
+                          await onRefreshResponses();
+                          setTimeout(() => setIsRefreshing(false), 1000);
+                        }}
+                        disabled={isRefreshing}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-blue-500 text-white text-xs font-bold rounded border-2 border-black hover:bg-blue-600 disabled:opacity-50"
+                      >
+                        <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
+                        {isRefreshing ? '확인 중...' : '응답 다시 불러오기'}
+                      </button>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {teams.map((team) => {
                       const response = teamResponses[team.id];

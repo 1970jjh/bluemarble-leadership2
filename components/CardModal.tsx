@@ -1,6 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Choice, GameCard, AIEvaluationResult, TeamResponse, AIComparativeResult } from '../types';
-import { X, Send, Sparkles, MessageSquare, Eye, Trophy, Users, CheckCircle2, Clock, Loader2 } from 'lucide-react';
+import { X, Send, Sparkles, MessageSquare, Eye, Trophy, Users, CheckCircle2, Clock, Loader2, RefreshCw } from 'lucide-react';
 
 interface CardModalProps {
   card: GameCard;
@@ -51,6 +51,7 @@ interface CardModalProps {
   onRevealResponses?: () => void;  // 관리자: 응답 공개
   onCompareTeams?: () => void;  // 관리자: AI 비교 분석
   onApplyResults?: () => void;  // 관리자: 결과 적용
+  onRefreshResponses?: () => void;  // 관리자: 응답 다시 불러오기
 }
 
 const CardModal: React.FC<CardModalProps> = ({
@@ -84,9 +85,11 @@ const CardModal: React.FC<CardModalProps> = ({
   isComparingTeams = false,
   onRevealResponses,
   onCompareTeams,
-  onApplyResults
+  onApplyResults,
+  onRefreshResponses
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   const isOpenEnded = !card.choices || card.choices.length === 0;
 
@@ -215,11 +218,27 @@ const CardModal: React.FC<CardModalProps> = ({
                 <>
                   {/* 팀 응답 현황 */}
                   <div className="bg-gray-50 border-4 border-gray-300 p-4 mb-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Users size={20} className="text-gray-600" />
-                      <span className="text-sm font-bold text-gray-700 uppercase">
-                        팀 응답 현황 ({Object.values(allTeamResponses).filter(r => r.isSubmitted).length} / {allTeams.length})
-                      </span>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Users size={20} className="text-gray-600" />
+                        <span className="text-sm font-bold text-gray-700 uppercase">
+                          팀 응답 현황 ({Object.values(allTeamResponses).filter(r => r.isSubmitted).length} / {allTeams.length})
+                        </span>
+                      </div>
+                      {onRefreshResponses && (
+                        <button
+                          onClick={async () => {
+                            setIsRefreshing(true);
+                            await onRefreshResponses();
+                            setTimeout(() => setIsRefreshing(false), 1500);
+                          }}
+                          disabled={isRefreshing}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded border-2 border-black hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                        >
+                          <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
+                          {isRefreshing ? '확인 중...' : '응답 불러오기'}
+                        </button>
+                      )}
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                       {allTeams.map(team => {

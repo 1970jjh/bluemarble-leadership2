@@ -435,10 +435,12 @@ async function _updateGameStateImpl(sessionId, updates) {
   return { success: true };
 }
 
-async function getGameState(sessionId) {
+async function getGameState(sessionId, skipCache = false) {
   const cacheKey = `gameState_${sessionId}`;
-  const cached = getCached(cacheKey);
-  if (cached) return cached;
+  if (!skipCache) {
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+  }
 
   await ensureSheet('GameState', GAMESTATE_HEADERS);
   const sheets = getSheets();
@@ -682,6 +684,9 @@ export default async function handler(req, res) {
         break;
       case 'getGameState':
         data = await getGameState(payload.sessionId);
+        break;
+      case 'getGameStateNoCache':
+        data = await getGameState(payload.sessionId, true);
         break;
       case 'saveTeamResponseRow':
         data = await saveTeamResponseRow(payload);

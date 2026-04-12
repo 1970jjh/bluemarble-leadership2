@@ -2078,6 +2078,27 @@ const App: React.FC = () => {
     }
   };
 
+  // 관리자: 응답 강제 새로고침 (구글시트에서 캐시 무시하고 최신 데이터 읽기)
+  const handleRefreshResponses = async () => {
+    if (!currentSessionId) return;
+    try {
+      // 캐시 무시 API 호출
+      const res = await fetch('/api/sheets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'getGameStateNoCache', payload: { sessionId: currentSessionId } })
+      });
+      const json = await res.json();
+      if (json.ok && json.data?.teamResponses) {
+        const responses = json.data.teamResponses as { [teamId: string]: TeamResponse };
+        setAllTeamResponses(responses);
+        console.log('[Refresh] 응답 새로고침 완료:', Object.keys(responses).length, '팀');
+      }
+    } catch (err) {
+      console.error('[Refresh] 응답 새로고침 실패:', err);
+    }
+  };
+
   // 관리자: 모든 팀 응답 공개
   const handleRevealAllResponses = async () => {
     if (!currentSessionId) return;
@@ -3577,6 +3598,7 @@ ${evaluationGuidelines}
           onRevealResponses={handleRevealAllResponses}
           onCompareTeams={handleCompareAllTeams}
           onApplyResults={handleApplyComparativeResult}
+          onRefreshResponses={handleRefreshResponses}
         />
       )}
 
