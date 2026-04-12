@@ -1708,14 +1708,14 @@ const App: React.FC = () => {
       // 스타트 지점 통과 체크 (이전 위치가 31이고 현재 위치가 0인 경우)
       const justPassedStart = previousPos === BOARD_SIZE - 1 && intermediatePos === 0;
 
-      if (justPassedStart && currentStep < steps) {
+      if (justPassedStart && currentStep < actualSteps) {
         // 스타트 지점을 통과 - 보너스 없이 계속 이동
         setTimeout(moveOneStep, 800);
         return;
       }
 
       // 모든 칸 이동 완료
-      if (currentStep >= steps) {
+      if (currentStep >= actualSteps) {
         // 마지막 칸이 정확히 스타트 지점인 경우 (finalPos === 0이고 passedStart)
         if (passedStart && finalPos === 0) {
           // 출발선 도착 - 보너스 없이 바로 이동 완료
@@ -2379,15 +2379,19 @@ ${evaluationGuidelines}
           }
         }));
 
-        // Firebase에 영토 소유권 저장 (새로고침 시에도 유지되도록)
+        // Firebase에 영토 소유권 저장 (완료 대기)
         if (currentSessionId) {
-          firestoreService.updateTerritoryOwnership(
-            currentSessionId,
-            territorySquareIndex,
-            winnerTeam.id,
-            winnerTeam.name,
-            winnerTeam.color
-          ).catch(err => console.warn('Firebase 영토 소유권 저장 실패:', err));
+          try {
+            await firestoreService.updateTerritoryOwnership(
+              currentSessionId,
+              territorySquareIndex,
+              winnerTeam.id,
+              winnerTeam.name,
+              winnerTeam.color
+            );
+          } catch (err) {
+            console.warn('Firebase 영토 소유권 저장 실패:', err);
+          }
         }
 
       }
