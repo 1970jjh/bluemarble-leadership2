@@ -1573,12 +1573,56 @@ const App: React.FC = () => {
     setGamePhase(GamePhase.Moving);
     const isSinglePiece = currentSession?.singlePieceMode === true;
     const startPos = teamToMove.position;
-    let finalPos = startPos + steps;
-    let passedStart = false;
 
-    if (finalPos >= BOARD_SIZE) {
-      finalPos = finalPos % BOARD_SIZE;
-      passedStart = true;
+    // 선점된 칸 건너뛰기: 경로상의 선점 칸 수를 세어 실제 이동 거리를 늘림
+    let actualSteps = steps;
+    const ownedSquareBonuses: { ownerTeamId: string; ownerTeamName: string }[] = [];
+
+    if (isSinglePiece) {
+      // 경로를 시뮬레이션하여 선점 칸 수 계산
+      let simPos = startPos;
+      let stepsRemaining = steps;
+      let extraSteps = 0;
+
+      while (stepsRemaining > 0) {
+        simPos = (simPos + 1) % BOARD_SIZE;
+        const territory = territories[simPos.toString()];
+        if (territory && simPos !== 0) {
+          // 선점된 칸 → 건너뛰기 (이동 칸에 포함하지 않음)
+          extraSteps++;
+          ownedSquareBonuses.push({
+            ownerTeamId: territory.ownerTeamId,
+            ownerTeamName: territory.ownerTeamName
+          });
+        } else {
+          stepsRemaining--;
+        }
+      }
+      actualSteps = steps + extraSteps;
+    }
+
+    let finalPos = (startPos + actualSteps) % BOARD_SIZE;
+    let passedStart = (startPos + actualSteps) >= BOARD_SIZE;
+
+    // 선점 칸 보너스 지급 (지나간 선점 칸의 소유팀에게 +40점씩)
+    if (ownedSquareBonuses.length > 0 && currentSession) {
+      const TERRITORY_BONUS = 40;
+      const bonusByTeam: { [teamId: string]: { name: string; count: number } } = {};
+      ownedSquareBonuses.forEach(b => {
+        if (!bonusByTeam[b.ownerTeamId]) bonusByTeam[b.ownerTeamId] = { name: b.ownerTeamName, count: 0 };
+        bonusByTeam[b.ownerTeamId].count++;
+      });
+
+      const updatedTeams = currentSession.teams.map(t => {
+        const bonus = bonusByTeam[t.id];
+        if (bonus) {
+          const totalBonus = bonus.count * TERRITORY_BONUS;
+          addLog(`🏠 선점 칸 통과! ${bonus.name} +${totalBonus}점 (${bonus.count}칸)`);
+          return { ...t, score: (t.score ?? 100) + totalBonus };
+        }
+        return t;
+      });
+      updateTeamsInSession(updatedTeams);
     }
 
     // 스타트 지점을 통과하는 스텝 번호 계산 (0-indexed)
@@ -2203,9 +2247,13 @@ ${evaluationGuidelines}
   const [showScorePopup, setShowScorePopup] = useState(false);
   const [scorePopupData, setScorePopupData] = useState<{ teamName: string; oldScore: number; addedScore: number; newScore: number; rank: number }[]>([]);
 
+  const [isApplyingScores, setIsApplyingScores] = useState(false);
+
   // 관리자: 비교 평가 결과를 점수에 적용
   const handleApplyComparativeResult = async () => {
     if (!currentSessionId || !currentSession || !aiComparativeResult) return;
+    if (isApplyingScores) return; // 더블 클릭 방지
+    setIsApplyingScores(true);
 
     // 로컬 작업 시작 - Firebase가 이 상태를 덮어쓰지 않도록 보호
     // (점수 팝업이 닫힐 때까지 유지 - handleCloseScorePopupAndNextTurn에서 해제)
@@ -2339,12 +2387,27 @@ ${evaluationGuidelines}
     }
     addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 
-    // 점수 변경 팝업 표시 (정렬: 총점 높은 순)
-    setScorePopupData(scoreChanges.sort((a, b) => b.newScore - a.newScore));
-    setShowScorePopup(true);
+    // 점수 적용 완료 → 바로 다음 턴으로 (팝업 없이)
+    setShowCardModal(false);
+    setActiveCard(null);
+    setAllTeamResponses({});
+    setIsResponsesRevealed(false);
+    setAiComparativeResult(null);
+    setIsComparingTeams(false);
+    setGamePhase(GamePhase.Idle);
+    setTurnTimeLeft(240);
+
+    // 응답 리셋
+    await firestoreService.resetTeamResponses(currentSessionId);
+
+    // 로컬 작업 완료
+    localOperationInProgress.current = false;
+    setIsApplyingScores(false);
+
+    soundEffects.playCelebration();
   };
 
-  // 점수 팝업 닫고 다음 턴으로 전환
+  // 점수 팝업 닫고 다음 턴으로 전환 (레거시 - 사용하지 않음)
   const handleCloseScorePopupAndNextTurn = async () => {
     if (!currentSessionId || !currentSession) return;
 
