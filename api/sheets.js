@@ -156,12 +156,16 @@ const GAMESTATE_HEADERS = ['sessionId', 'dataJson', 'lastUpdated'];
 // Google Sheets 셀 한도 (50,000자) 대비 안전 마진
 const CELL_CHAR_LIMIT = 49000;
 
-// base64 이미지를 제거하여 데이터 크기 줄이기
+// 너무 큰 base64 이미지만 제거 (압축된 작은 이미지는 허용)
 function stripBase64Images(obj) {
   if (!obj) return obj;
   const cleaned = { ...obj };
   if (cleaned.customBoardImage && cleaned.customBoardImage.startsWith('data:')) {
-    cleaned.customBoardImage = ''; // base64 이미지는 너무 커서 저장 불가
+    // 100KB(~137K chars) 이하면 허용, 그 이상이면 제거
+    if (cleaned.customBoardImage.length > 137000) {
+      console.warn(`[stripBase64] 보드 이미지 너무 큼 (${cleaned.customBoardImage.length}자) - 제거됨`);
+      cleaned.customBoardImage = '';
+    }
   }
   return cleaned;
 }

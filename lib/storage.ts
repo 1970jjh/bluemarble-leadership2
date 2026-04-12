@@ -1,10 +1,14 @@
-// 이미지 업로드 유틸리티 (Google Drive 저장)
+// 이미지 업로드 유틸리티 (클라이언트 측 압축 후 Data URL로 저장)
 
-// 최대 파일 크기: 3MB
+// 최대 파일 크기: 3MB (원본 기준)
 const MAX_FILE_SIZE = 3 * 1024 * 1024;
 
 // 허용되는 이미지 타입
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+
+// 압축 후 목표 크기: ~60KB (base64로 ~80K chars, 세션 데이터에 저장 가능)
+const TARGET_SIZE = 60 * 1024;
+const MAX_DIMENSION = 800;
 
 export interface UploadResult {
   success: boolean;
@@ -13,12 +17,57 @@ export interface UploadResult {
 }
 
 /**
+ * 이미지를 리사이즈 + 압축하여 Data URL로 변환
+ */
+function compressImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    img.onload = () => {
+      // 리사이즈 (최대 800x800 비율 유지)
+      let { width, height } = img;
+      if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+        const ratio = Math.min(MAX_DIMENSION / width, MAX_DIMENSION / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      ctx!.drawImage(img, 0, 0, width, height);
+
+      // JPEG로 압축 (품질 조절하여 목표 크기 달성)
+      let quality = 0.7;
+      let dataUrl = canvas.toDataURL('image/jpeg', quality);
+
+      // 목표 크기보다 크면 품질을 낮춤
+      while (dataUrl.length > TARGET_SIZE * 1.37 && quality > 0.1) {
+        quality -= 0.1;
+        dataUrl = canvas.toDataURL('image/jpeg', quality);
+      }
+
+      resolve(dataUrl);
+    };
+
+    img.onerror = () => reject(new Error('이미지 로드 실패'));
+
+    // File → Image
+    const reader = new FileReader();
+    reader.onload = (e) => { img.src = e.target?.result as string; };
+    reader.onerror = () => reject(new Error('파일 읽기 실패'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
  * 세션 보드 배경 이미지 업로드
- * Google Drive에 이미지를 업로드하고 공개 URL을 반환
+ * 클라이언트에서 압축 후 Data URL 반환 (Google Sheets 세션 데이터에 저장됨)
  */
 export const uploadBoardImage = async (
   file: File,
-  sessionId: string
+  _sessionId: string
 ): Promise<UploadResult> => {
   // 파일 크기 검증
   if (file.size > MAX_FILE_SIZE) {
@@ -37,54 +86,13 @@ export const uploadBoardImage = async (
   }
 
   try {
-    // 파일을 base64로 변환
-    const base64Data = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        // data:image/png;base64,xxxx 에서 base64 부분만 추출
-        const base64 = result.split(',')[1];
-        resolve(base64);
-      };
-      reader.onerror = () => reject(new Error('파일 읽기 실패'));
-      reader.readAsDataURL(file);
-    });
-
-    // 서버 API를 통해 Google Drive에 업로드
-    const extension = file.name.split('.').pop() || 'png';
-    const fileName = `board_${sessionId}_${Date.now()}.${extension}`;
-
-    const res = await fetch('/api/sheets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'uploadImage',
-        payload: {
-          fileName,
-          mimeType: file.type,
-          base64Data
-        }
-      })
-    });
-
-    const json = await res.json();
-
-    if (!json.ok) {
-      return {
-        success: false,
-        error: json.error || '이미지 업로드에 실패했습니다.'
-      };
-    }
-
-    return {
-      success: true,
-      url: json.data.url
-    };
+    const dataUrl = await compressImage(file);
+    return { success: true, url: dataUrl };
   } catch (error: any) {
-    console.error('Image upload error:', error);
+    console.error('Image compress error:', error);
     return {
       success: false,
-      error: `업로드 실패: ${error.message || '알 수 없는 오류'}`
+      error: `이미지 처리 실패: ${error.message || '알 수 없는 오류'}`
     };
   }
 };
