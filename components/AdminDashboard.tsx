@@ -250,7 +250,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     // 커스텀 모드: 모든 카드 내보내기
     const cardsToExport = cards;
 
-    // 내보내기용 간소화된 형식으로 변환
+    // 내보내기용 간소화된 형식으로 변환 (자유 서술 모드 - choices 제외)
     const exportData = cardsToExport.map(card => ({
       id: card.id,
       type: card.type,
@@ -259,7 +259,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       competencyNameEn: card.competencyNameEn || '',
       title: card.title,
       situation: card.situation,
-      choices: card.choices || [],
       learningPoint: card.learningPoint,
       boardIndex: card.boardIndex
     }));
@@ -332,10 +331,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             competencyNameEn: card.competencyNameEn || '',
             title: card.title,
             situation: card.situation,
-            choices: card.choices?.map((c: any) => ({
-              id: c.id || String.fromCharCode(65 + validatedCards.length),
-              text: c.text || ''
-            })) || existingCard?.choices || [],
+            choices: card.choices?.length > 0
+              ? card.choices.map((c: any) => ({
+                  id: c.id || String.fromCharCode(65 + validatedCards.length),
+                  text: c.text || ''
+                }))
+              : undefined,
             learningPoint: card.learningPoint || '',
             boardIndex: card.boardIndex
           });
