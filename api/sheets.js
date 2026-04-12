@@ -543,6 +543,64 @@ async function updateTeamResponseAiEvaluation(payload) {
 }
 
 // ========================
+// Google Drive 이미지 업로드
+// ========================
+
+async function uploadImageToDrive(payload) {
+  const { fileName, mimeType, base64Data } = payload;
+  if (!DRIVE_FOLDER_ID) throw new Error('GOOGLE_DRIVE_FOLDER_ID not configured');
+
+  const auth = getAuth();
+  const drive = google.drive({ version: 'v3', auth });
+
+  // base64 → Buffer
+  const buffer = Buffer.from(base64Data, 'base64');
+
+  // Google Drive에 파일 업로드
+  const fileMetadata = {
+    name: fileName || `board_${Date.now()}.png`,
+    parents: [DRIVE_FOLDER_ID]
+  };
+
+  const media = {
+    mimeType: mimeType || 'image/png',
+    body: require('stream').Readable.from(buffer)
+  };
+
+  const file = await withRetry(
+    () => drive.files.create({
+      requestBody: fileMetadata,
+      media: media,
+      fields: 'id, webViewLink, webContentLink'
+    }),
+    'uploadImageToDrive'
+  );
+
+  const fileId = file.data.id;
+
+  // 파일을 공개 읽기 권한으로 설정
+  await withRetry(
+    () => drive.permissions.create({
+      fileId: fileId,
+      requestBody: {
+        role: 'reader',
+        type: 'anyone'
+      }
+    }),
+    'setFilePermission'
+  );
+
+  // 직접 접근 가능한 URL 반환
+  const directUrl = `https://drive.google.com/uc?export=view&id=${fileId}`;
+
+  return {
+    success: true,
+    fileId: fileId,
+    url: directUrl
+  };
+}
+
+// ========================
 // Request Handler
 // ========================
 
@@ -597,6 +655,9 @@ export default async function handler(req, res) {
         break;
       case 'updateTeamResponseAiEvaluation':
         data = await updateTeamResponseAiEvaluation(payload);
+        break;
+      case 'uploadImage':
+        data = await uploadImageToDrive(payload);
         break;
       default:
         return res.status(400).json({ ok: false, error: `Unknown action: ${action}` });
