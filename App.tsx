@@ -1436,7 +1436,6 @@ const App: React.FC = () => {
 
     // 출발 칸 처리 (위치 업데이트 + 다음 턴)
     if (square.type === SquareType.Start) {
-      // 공통 말 모드: 모든 팀 위치를 0으로 업데이트
       if (currentSession) {
         const updatedTeams = currentSession.teams.map(t => ({ ...t, position: 0 }));
         await updateTeamsInSession(updatedTeams);
@@ -1672,23 +1671,18 @@ const App: React.FC = () => {
       const justPassedStart = previousPos === BOARD_SIZE - 1 && intermediatePos === 0;
 
       if (justPassedStart && currentStep < steps) {
-        // 공통 말 모드: 한바퀴 보너스 없이 그냥 계속 이동
-        if (isSinglePiece) {
-          // 보너스 없이 다음 스텝으로 계속
-          setTimeout(moveOneStep, 800);
-          return;
-        }
-
         // 스타트 지점을 통과했고 아직 이동할 칸이 남아있음 → 보너스 팝업 표시
         const newLapCount = teamToMove.lapCount + 1;
 
-        // 🎯 보너스는 버튼 클릭 시 지급 - 팝업만 표시
-        // 팝업 표시
-        setLapBonusInfo({ teamName: teamToMove.name, teamId: teamToMove.id, lapCount: newLapCount });
+        // 🎯 보너스 팝업 표시 (공통말도 동일)
+        setLapBonusInfo({
+          teamName: isSinglePiece ? '전체 팀' : teamToMove.name,
+          teamId: teamToMove.id,
+          lapCount: newLapCount
+        });
         setShowLapBonus(true);
 
         // 팝업이 닫힌 후 나머지 이동 계속 (handleLapBonusComplete에서 처리)
-        // 남은 스텝 수를 저장
         const remainingSteps = steps - currentStep;
         pendingMoveRef.current = { teamToMove: { ...teamToMove, position: intermediatePos, lapCount: newLapCount }, remainingSteps, finalPos };
         return;
@@ -1698,16 +1692,14 @@ const App: React.FC = () => {
       if (currentStep >= steps) {
         // 마지막 칸이 정확히 스타트 지점인 경우 (finalPos === 0이고 passedStart)
         if (passedStart && finalPos === 0) {
-          // 공통 말 모드: 한바퀴 보너스 없이 바로 이동 완료 처리
-          if (isSinglePiece) {
-            finishMove(teamToMove, finalPos);
-            return;
-          }
-
           const newLapCount = teamToMove.lapCount + 1;
 
-          // 🎯 보너스는 버튼 클릭 시 지급 - 팝업만 표시
-          setLapBonusInfo({ teamName: teamToMove.name, teamId: teamToMove.id, lapCount: newLapCount });
+          // 🎯 보너스는 버튼 클릭 시 지급 - 팝업만 표시 (공통말도 동일)
+          setLapBonusInfo({
+            teamName: isSinglePiece ? '전체 팀' : teamToMove.name,
+            teamId: teamToMove.id,
+            lapCount: newLapCount
+          });
           setShowLapBonus(true);
           pendingMoveRef.current = { teamToMove: { ...teamToMove, position: finalPos, lapCount: newLapCount }, remainingSteps: 0, finalPos };
           return;
@@ -1863,10 +1855,11 @@ const App: React.FC = () => {
 
     const { teamId, teamName, lapCount } = lapBonusInfo;
 
-    // 🎯 한바퀴 보너스 지급 (버튼 클릭 시에만 실행) - 완주한 팀에게만 +60점
+    // 🎯 한바퀴 보너스 지급 (버튼 클릭 시에만 실행)
+    const isSinglePiece = currentSession.singlePieceMode === true;
     const updatedTeams = currentSession.teams.map(t => {
-      if (t.id === teamId) {
-        // 완주한 팀: +60점 + lapCount 업데이트
+      if (isSinglePiece || t.id === teamId) {
+        // 공통말: 모든 팀에게 보너스 / 개별말: 해당 팀만
         const currentScore = t.score ?? INITIAL_SCORE;
         return { ...t, score: currentScore + LAP_BONUS_POINTS, lapCount: lapCount };
       }
