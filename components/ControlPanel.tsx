@@ -137,25 +137,8 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
            <Dice value={diceValue[1]} rolling={rolling} />
         </div>
 
-        {/* 팀 선택 + 주사위 입력 */}
+        {/* 주사위 입력 */}
         <div className="bg-white p-4 border-4 border-black text-black space-y-3">
-          {/* 이동할 팀 선택 */}
-          <div>
-            <label className="block text-xs font-bold uppercase mb-2 text-gray-600">🎯 이동할 팀 선택</label>
-            <select
-              value={selectedTeamIndex}
-              onChange={(e) => setSelectedTeamIndex(parseInt(e.target.value))}
-              className="w-full border-2 border-black p-2 font-bold text-lg focus:outline-none focus:bg-yellow-100 cursor-pointer"
-              disabled={!isGameStarted || phase !== GamePhase.Idle || rolling}
-            >
-              {teams.map((team, index) => (
-                <option key={team.id} value={index}>
-                  {index + 1}팀
-                </option>
-              ))}
-            </select>
-          </div>
-
           {/* 주사위 입력 */}
           <div>
             <label className="block text-xs font-bold uppercase mb-2 text-gray-600">🎲 주사위 입력 (2~12)</label>
