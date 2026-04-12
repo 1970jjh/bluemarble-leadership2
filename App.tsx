@@ -1850,21 +1850,42 @@ const App: React.FC = () => {
     }
   };
 
-  // 관리자: 응답 강제 새로고침 (구글시트에서 캐시 무시하고 최신 데이터 읽기)
+  // 관리자: 응답 강제 새로고침 (TeamResponses 탭에서 직접 읽어 복원)
   const handleRefreshResponses = async () => {
-    if (!currentSessionId) return;
+    if (!currentSessionId || !activeCard) return;
     try {
-      // 캐시 무시 API 호출
+      // TeamResponses 탭에서 현재 세션 + 현재 카드 제목으로 응답 조회
       const res = await fetch('/api/sheets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'getGameStateNoCache', payload: { sessionId: currentSessionId } })
+        body: JSON.stringify({
+          action: 'getTeamResponsesByCard',
+          payload: { sessionId: currentSessionId, cardTitle: activeCard.title }
+        })
       });
       const json = await res.json();
-      if (json.ok && json.data?.teamResponses) {
-        const responses = json.data.teamResponses as { [teamId: string]: TeamResponse };
-        setAllTeamResponses(responses);
-        console.log('[Refresh] 응답 새로고침 완료:', Object.keys(responses).length, '팀');
+      if (json.ok && json.data) {
+        const rows = json.data as Array<{ teamId: string; teamName: string; response: string; timestamp: number }>;
+        // TeamResponses 행들을 teamResponses 객체로 변환
+        const reconstructed: { [teamId: string]: TeamResponse } = {};
+        rows.forEach((row: any) => {
+          reconstructed[row.teamId] = {
+            teamId: row.teamId,
+            teamName: row.teamName,
+            selectedChoice: null,
+            reasoning: row.response,
+            submittedAt: row.timestamp,
+            isSubmitted: true
+          };
+        });
+        setAllTeamResponses(reconstructed);
+
+        // GameState도 업데이트 (다음 폴링에서 덮어쓰이지 않도록)
+        await firestoreService.updateGameState(currentSessionId, {
+          teamResponses: reconstructed
+        });
+
+        console.log('[Refresh] TeamResponses 탭에서 복원 완료:', Object.keys(reconstructed).length, '팀');
       }
     } catch (err) {
       console.error('[Refresh] 응답 새로고침 실패:', err);

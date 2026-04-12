@@ -545,6 +545,37 @@ async function getTeamResponseRows(sessionId) {
     }));
 }
 
+async function getTeamResponsesByCard(payload) {
+  await ensureSheet('TeamResponses', TEAM_RESPONSES_HEADERS);
+  const sheets = getSheets();
+  const { sessionId, cardTitle } = payload;
+
+  const res = await enqueue(() => withRetry(
+    () => sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: 'TeamResponses!A:H'
+    }),
+    'getTeamResponsesByCard'
+  ));
+  const rows = res.data.values || [];
+  if (rows.length <= 1) return [];
+
+  // sessionId + cardTitle로 매칭, 같은 팀이 여러 번 제출한 경우 마지막 것만
+  const teamMap = {};
+  rows.slice(1).forEach(row => {
+    if (row[0] === sessionId && row[2] === cardTitle) {
+      teamMap[row[3]] = {
+        teamId: row[3] || '',
+        teamName: row[4] || '',
+        response: row[5] || '',
+        timestamp: parseInt(row[7]) || 0
+      };
+    }
+  });
+
+  return Object.values(teamMap);
+}
+
 async function updateTeamResponseAiEvaluation(payload) {
   await ensureSheet('TeamResponses', TEAM_RESPONSES_HEADERS);
   const sheets = getSheets();
@@ -640,6 +671,9 @@ export default async function handler(req, res) {
         break;
       case 'getTeamResponseRows':
         data = await getTeamResponseRows(payload.sessionId);
+        break;
+      case 'getTeamResponsesByCard':
+        data = await getTeamResponsesByCard(payload);
         break;
       case 'updateTeamResponseAiEvaluation':
         data = await updateTeamResponseAiEvaluation(payload);
