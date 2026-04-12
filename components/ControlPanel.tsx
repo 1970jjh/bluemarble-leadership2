@@ -73,28 +73,6 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           </div>
         </div>
 
-        {/* Recently Turn Status */}
-        <div className="text-center bg-gray-100 border-2 border-black p-4">
-          <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Recently Turn</p>
-          {lastMoveInfo ? (
-            <>
-              <h3 className="text-3xl font-black uppercase mb-2 truncate text-blue-700">
-                {lastMoveInfo.teamName}
-              </h3>
-              <div className="my-2 p-2 bg-white border-2 border-black">
-                <p className="text-xs text-gray-400 font-bold uppercase">이동 칸수</p>
-                <p className="text-2xl font-black text-black">{lastMoveInfo.spaces}칸</p>
-              </div>
-            </>
-          ) : (
-            <p className="text-sm text-gray-400 font-bold py-2">아직 이동 기록 없음</p>
-          )}
-          <div className={`inline-block border-2 border-black px-4 py-1 text-sm font-bold uppercase ${
-            phase === GamePhase.Decision ? 'bg-orange-400 text-white animate-pulse' : 'bg-black text-white'
-          }`}>
-            {phase}
-          </div>
-        </div>
       </div>
 
       {/* Action Section */}

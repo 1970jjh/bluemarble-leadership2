@@ -223,8 +223,11 @@ export async function updateTeamResponse(
   try {
     const currentTurn = state?.currentTurn || 0;
     const currentCard = state?.currentCard;
+    // 세션 이름을 가져와서 세션별 탭에 저장
+    const session = await getSession(sessionId);
     await callAPI('saveTeamResponseRow', {
       sessionId,
+      sessionName: session?.name || sessionId,
       turn: currentTurn,
       cardTitle: currentCard?.title || '',
       teamId: response.teamId,
@@ -280,9 +283,10 @@ export async function updateTeamResponseAiEvaluation(
   sessionId: string,
   cardTitle: string,
   teamId: string,
-  aiEvaluation: string
+  aiEvaluation: string,
+  sessionName?: string
 ): Promise<void> {
-  await callAPI('updateTeamResponseAiEvaluation', { sessionId, cardTitle, teamId, aiEvaluation });
+  await callAPI('updateTeamResponseAiEvaluation', { sessionId, sessionName, cardTitle, teamId, aiEvaluation });
 }
 
 // ========================

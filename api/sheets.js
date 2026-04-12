@@ -492,13 +492,17 @@ async function deleteGameState(sessionId) {
 const TEAM_RESPONSES_HEADERS = ['sessionId', 'turn', 'cardTitle', 'teamId', 'teamName', 'response', 'aiEvaluation', 'timestamp'];
 
 async function saveTeamResponseRow(payload) {
-  await ensureSheet('TeamResponses', TEAM_RESPONSES_HEADERS);
+  const { sessionId, sessionName, turn, cardTitle, teamId, teamName, response, aiEvaluation, timestamp } = payload;
+
+  // 세션 이름으로 탭 생성 (세션별 분리)
+  const tabName = sessionName ? `응답_${sessionName}` : 'TeamResponses';
+  await ensureSheet(tabName, TEAM_RESPONSES_HEADERS);
+
   const sheets = getSheets();
-  const { sessionId, turn, cardTitle, teamId, teamName, response, aiEvaluation, timestamp } = payload;
   await enqueue(() => withRetry(
     () => sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
-      range: 'TeamResponses!A:H',
+      range: `${tabName}!A:H`,
       valueInputOption: 'RAW',
       requestBody: {
         values: [[
@@ -546,14 +550,15 @@ async function getTeamResponseRows(sessionId) {
 }
 
 async function getTeamResponsesByCard(payload) {
-  await ensureSheet('TeamResponses', TEAM_RESPONSES_HEADERS);
+  const { sessionId, sessionName, cardTitle } = payload;
+  const tabName = sessionName ? `응답_${sessionName}` : 'TeamResponses';
+  await ensureSheet(tabName, TEAM_RESPONSES_HEADERS);
   const sheets = getSheets();
-  const { sessionId, cardTitle } = payload;
 
   const res = await enqueue(() => withRetry(
     () => sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: 'TeamResponses!A:H'
+      range: `${tabName}!A:H`
     }),
     'getTeamResponsesByCard'
   ));
@@ -577,20 +582,20 @@ async function getTeamResponsesByCard(payload) {
 }
 
 async function updateTeamResponseAiEvaluation(payload) {
-  await ensureSheet('TeamResponses', TEAM_RESPONSES_HEADERS);
+  const { sessionId, sessionName, cardTitle, teamId, aiEvaluation } = payload;
+  const tabName = sessionName ? `응답_${sessionName}` : 'TeamResponses';
+  await ensureSheet(tabName, TEAM_RESPONSES_HEADERS);
   const sheets = getSheets();
-  const { sessionId, cardTitle, teamId, aiEvaluation } = payload;
 
   const res = await enqueue(() => withRetry(
     () => sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: 'TeamResponses!A:H'
+      range: `${tabName}!A:H`
     }),
     'updateTeamResponseAiEvaluation.get'
   ));
   const rows = res.data.values || [];
 
-  // sessionId + cardTitle + teamId로 매칭되는 행 찾기 (가장 최근 것)
   let rowIndex = -1;
   for (let i = rows.length - 1; i > 0; i--) {
     if (rows[i][0] === sessionId && rows[i][2] === cardTitle && rows[i][3] === teamId) {
@@ -601,11 +606,10 @@ async function updateTeamResponseAiEvaluation(payload) {
 
   if (rowIndex === -1) return { success: false, error: 'Row not found' };
 
-  // G열(aiEvaluation)만 업데이트
   await enqueue(() => withRetry(
     () => sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
-      range: `TeamResponses!G${rowIndex + 1}`,
+      range: `${tabName}!G${rowIndex + 1}`,
       valueInputOption: 'RAW',
       requestBody: { values: [[aiEvaluation || '']] }
     }),

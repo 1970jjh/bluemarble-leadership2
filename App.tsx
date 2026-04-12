@@ -1248,7 +1248,9 @@ const App: React.FC = () => {
     setIsComparingTeams(false);
     // 영토 소유권 초기화
     setTerritories({});
-    setGamePhase(GamePhase.Idle);
+    // 게임 시작 상태도 초기화 (참가자도 리셋됨)
+    setIsGameStarted(false);
+    setGamePhase(GamePhase.WaitingToStart);
 
     // 턴 버전과 인덱스 초기화
     localTurnVersion.current = 0;
@@ -1268,9 +1270,10 @@ const App: React.FC = () => {
       try {
         await firestoreService.updateGameState(currentSessionId, {
           sessionId: currentSessionId,
-          phase: GamePhase.Idle,
+          phase: GamePhase.WaitingToStart,
+          isGameStarted: false,
           currentTeamIndex: 0,
-          turnVersion: 0,  // 턴 버전 초기화
+          turnVersion: 0,
           currentTurn: 0,
           diceValue: [1, 1],
           currentCard: null,
@@ -1904,7 +1907,7 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'getTeamResponsesByCard',
-          payload: { sessionId: currentSessionId, cardTitle: activeCard.title }
+          payload: { sessionId: currentSessionId, sessionName: currentSession?.name, cardTitle: activeCard.title }
         })
       });
       const json = await res.json();
@@ -2218,7 +2221,8 @@ ${evaluationGuidelines}
             currentSessionId,
             cardTitle,
             ranking.teamId,
-            `[${ranking.rank}위 / ${ranking.score}점] ${ranking.feedback}`
+            `[${ranking.rank}위 / ${ranking.score}점] ${ranking.feedback}`,
+            currentSession?.name
           );
         }
       } catch (evalErr) {
