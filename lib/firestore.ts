@@ -314,82 +314,75 @@ export async function getTerritoryOwner(
 }
 
 // ========================
-// 실시간 리스너 (폴링 기반)
+// 실시간 리스너 (폴링 기반 - 쿼터 절약)
 // ========================
+
+function createPoller(
+  fetchFn: () => Promise<any>,
+  callback: (data: any) => void,
+  intervalMs: number,
+  label: string
+): Unsubscribe {
+  let stopped = false;
+  let lastData = '';
+  let errorCount = 0;
+
+  const poll = async () => {
+    if (stopped) return;
+    try {
+      const data = await fetchFn();
+      const json = JSON.stringify(data);
+      if (json !== lastData) {
+        lastData = json;
+        callback(data);
+      }
+      errorCount = 0; // 성공 시 리셋
+    } catch (e) {
+      errorCount++;
+      console.error(`[Sheets] ${label} poll error (${errorCount}):`, e);
+    }
+    if (!stopped) {
+      // 에러 시 점진적 백오프 (최대 30초)
+      const backoff = errorCount > 0 ? Math.min(intervalMs * Math.pow(2, errorCount), 30000) : intervalMs;
+      setTimeout(poll, backoff);
+    }
+  };
+
+  poll();
+  return () => { stopped = true; };
+}
 
 export function subscribeToSession(
   sessionId: string,
   callback: (session: Session | null) => void
 ): Unsubscribe {
-  let stopped = false;
-  let lastData = '';
-
-  const poll = async () => {
-    if (stopped) return;
-    try {
-      const session = await getSession(sessionId);
-      const json = JSON.stringify(session);
-      if (json !== lastData) {
-        lastData = json;
-        callback(session);
-      }
-    } catch (e) {
-      console.error('[Sheets] subscribeToSession poll error:', e);
-    }
-    if (!stopped) setTimeout(poll, 2000);
-  };
-
-  poll();
-  return () => { stopped = true; };
+  return createPoller(
+    () => getSession(sessionId),
+    callback,
+    8000, // 8초 간격
+    'subscribeToSession'
+  );
 }
 
 export function subscribeToGameState(
   sessionId: string,
   callback: (state: GameState | null) => void
 ): Unsubscribe {
-  let stopped = false;
-  let lastData = '';
-
-  const poll = async () => {
-    if (stopped) return;
-    try {
-      const state = await getGameState(sessionId);
-      const json = JSON.stringify(state);
-      if (json !== lastData) {
-        lastData = json;
-        callback(state);
-      }
-    } catch (e) {
-      console.error('[Sheets] subscribeToGameState poll error:', e);
-    }
-    if (!stopped) setTimeout(poll, 2000);
-  };
-
-  poll();
-  return () => { stopped = true; };
+  return createPoller(
+    () => getGameState(sessionId),
+    callback,
+    5000, // 5초 간격
+    'subscribeToGameState'
+  );
 }
 
 export function subscribeToAllSessions(
   callback: (sessions: Session[]) => void
 ): Unsubscribe {
-  let stopped = false;
-  let lastData = '';
-
-  const poll = async () => {
-    if (stopped) return;
-    try {
-      const sessions = await getAllSessions();
-      const json = JSON.stringify(sessions);
-      if (json !== lastData) {
-        lastData = json;
-        callback(sessions);
-      }
-    } catch (e) {
-      console.error('[Sheets] subscribeToAllSessions poll error:', e);
-    }
-    if (!stopped) setTimeout(poll, 3000);
-  };
-
-  poll();
-  return () => { stopped = true; };
+  return createPoller(
+    () => getAllSessions(),
+    callback,
+    10000, // 10초 간격
+    'subscribeToAllSessions'
+  );
 }

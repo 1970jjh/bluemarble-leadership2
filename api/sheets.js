@@ -3,29 +3,57 @@ import { google } from 'googleapis';
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
-function getAuth() {
-  return new google.auth.JWT(
-    process.env.GOOGLE_CLIENT_EMAIL,
-    undefined,
-    (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
-    [
-      'https://www.googleapis.com/auth/spreadsheets',
-      'https://www.googleapis.com/auth/drive'
-    ]
-  );
+// 서버 측 캐시 (Vercel 서버리스 함수의 warm instance에서 유지)
+const cache = {};
+const CACHE_TTL = 3000; // 3초 캐시
+
+function getCached(key) {
+  const entry = cache[key];
+  if (entry && Date.now() - entry.ts < CACHE_TTL) return entry.data;
+  return null;
 }
 
-function getSheets() {
-  return google.sheets({ version: 'v4', auth: getAuth() });
+function setCache(key, data) {
+  cache[key] = { data, ts: Date.now() };
 }
+
+function invalidateCache(prefix) {
+  Object.keys(cache).forEach(k => { if (k.startsWith(prefix)) delete cache[k]; });
+}
+
+let _auth;
+function getAuth() {
+  if (!_auth) {
+    _auth = new google.auth.JWT(
+      process.env.GOOGLE_CLIENT_EMAIL,
+      undefined,
+      (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+      [
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/drive'
+      ]
+    );
+  }
+  return _auth;
+}
+
+let _sheets;
+function getSheets() {
+  if (!_sheets) _sheets = google.sheets({ version: 'v4', auth: getAuth() });
+  return _sheets;
+}
+
+// ensureSheet 결과 캐시 (탭이 이미 있으면 재확인 불필요)
+const ensuredSheets = {};
 
 // ========================
 // Helper: 시트 탭 자동 생성
 // ========================
 async function ensureSheet(tabName, headers) {
+  if (ensuredSheets[tabName]) return; // 이미 확인됨
   const sheets = getSheets();
   try {
-    const meta = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID });
+    const meta = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID, fields: 'sheets.properties.title' });
     const exists = meta.data.sheets.some(s => s.properties.title === tabName);
     if (!exists) {
       await sheets.spreadsheets.batchUpdate({
@@ -45,6 +73,7 @@ async function ensureSheet(tabName, headers) {
   } catch (e) {
     console.error(`ensureSheet(${tabName}) error:`, e.message);
   }
+  ensuredSheets[tabName] = true;
 }
 
 // ========================
@@ -75,10 +104,14 @@ async function createSession(session) {
       ]]
     }
   });
+  invalidateCache('allSessions');
   return { success: true };
 }
 
 async function getAllSessions() {
+  const cached = getCached('allSessions');
+  if (cached) return cached;
+
   await ensureSheet('Sessions', SESSION_HEADERS);
   const sheets = getSheets();
   const res = await sheets.spreadsheets.values.get({
@@ -86,9 +119,9 @@ async function getAllSessions() {
     range: 'Sessions!A:I'
   });
   const rows = res.data.values || [];
-  if (rows.length <= 1) return []; // 헤더만 있는 경우
+  if (rows.length <= 1) return [];
 
-  return rows.slice(1).map(row => {
+  const result = rows.slice(1).map(row => {
     try {
       // dataJson 컬럼에서 전체 데이터 복원
       const dataJson = row[8];
@@ -108,6 +141,9 @@ async function getAllSessions() {
       teams: []
     };
   }).filter(s => s && s.id);
+
+  setCache('allSessions', result);
+  return result;
 }
 
 async function getSessionByAccessCode(accessCode) {
@@ -158,6 +194,7 @@ async function updateSession(sessionId, updates) {
       ]]
     }
   });
+  invalidateCache('allSessions');
   return { success: true };
 }
 
@@ -224,10 +261,15 @@ async function updateGameState(sessionId, updates) {
       requestBody: { values: [[sessionId, dataJson, mergedState.lastUpdated]] }
     });
   }
+  invalidateCache('gameState');
   return { success: true };
 }
 
 async function getGameState(sessionId) {
+  const cacheKey = `gameState_${sessionId}`;
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
+
   await ensureSheet('GameState', GAMESTATE_HEADERS);
   const sheets = getSheets();
   const res = await sheets.spreadsheets.values.get({
@@ -238,7 +280,9 @@ async function getGameState(sessionId) {
   const row = rows.find((r, i) => i > 0 && r[0] === sessionId);
   if (!row || !row[1]) return null;
   try {
-    return JSON.parse(row[1]);
+    const result = JSON.parse(row[1]);
+    setCache(cacheKey, result);
+    return result;
   } catch (e) {
     return null;
   }
