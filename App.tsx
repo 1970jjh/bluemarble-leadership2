@@ -1671,20 +1671,8 @@ const App: React.FC = () => {
       const justPassedStart = previousPos === BOARD_SIZE - 1 && intermediatePos === 0;
 
       if (justPassedStart && currentStep < steps) {
-        // 스타트 지점을 통과했고 아직 이동할 칸이 남아있음 → 보너스 팝업 표시
-        const newLapCount = teamToMove.lapCount + 1;
-
-        // 🎯 보너스 팝업 표시 (공통말도 동일)
-        setLapBonusInfo({
-          teamName: isSinglePiece ? '전체 팀' : teamToMove.name,
-          teamId: teamToMove.id,
-          lapCount: newLapCount
-        });
-        setShowLapBonus(true);
-
-        // 팝업이 닫힌 후 나머지 이동 계속 (handleLapBonusComplete에서 처리)
-        const remainingSteps = steps - currentStep;
-        pendingMoveRef.current = { teamToMove: { ...teamToMove, position: intermediatePos, lapCount: newLapCount }, remainingSteps, finalPos };
+        // 스타트 지점을 통과 - 보너스 없이 계속 이동
+        setTimeout(moveOneStep, 800);
         return;
       }
 
@@ -1692,16 +1680,8 @@ const App: React.FC = () => {
       if (currentStep >= steps) {
         // 마지막 칸이 정확히 스타트 지점인 경우 (finalPos === 0이고 passedStart)
         if (passedStart && finalPos === 0) {
-          const newLapCount = teamToMove.lapCount + 1;
-
-          // 🎯 보너스는 버튼 클릭 시 지급 - 팝업만 표시 (공통말도 동일)
-          setLapBonusInfo({
-            teamName: isSinglePiece ? '전체 팀' : teamToMove.name,
-            teamId: teamToMove.id,
-            lapCount: newLapCount
-          });
-          setShowLapBonus(true);
-          pendingMoveRef.current = { teamToMove: { ...teamToMove, position: finalPos, lapCount: newLapCount }, remainingSteps: 0, finalPos };
+          // 출발선 도착 - 보너스 없이 바로 이동 완료
+          finishMove(teamToMove, finalPos);
           return;
         }
 
