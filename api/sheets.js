@@ -348,19 +348,43 @@ async function deleteSession(sessionId) {
 }
 
 // ========================
-// GameState CRUD
+// GameState CRUD (세션별 직렬화 큐로 race condition 완전 방지)
 // ========================
 
-async function updateGameState(sessionId, updates) {
+// 세션별 업데이트 큐: 같은 세션의 업데이트는 반드시 순차 실행
+const sessionUpdateChains = {};
+
+function updateGameState(sessionId, updates) {
+  // 세션별 promise chain 생성 - 이전 작업 완료 후 다음 작업 시작
+  if (!sessionUpdateChains[sessionId]) {
+    sessionUpdateChains[sessionId] = Promise.resolve();
+  }
+
+  const result = sessionUpdateChains[sessionId]
+    .then(() => _updateGameStateImpl(sessionId, updates))
+    .catch((err) => {
+      console.error(`[GameState] 세션 ${sessionId} 업데이트 실패:`, err.message);
+      throw err;
+    });
+
+  // chain 업데이트 (에러가 나도 chain 유지)
+  sessionUpdateChains[sessionId] = result.catch(() => {});
+
+  return result;
+}
+
+async function _updateGameStateImpl(sessionId, updates) {
   await ensureSheet('GameState', GAMESTATE_HEADERS);
   const sheets = getSheets();
-  const res = await enqueue(() => withRetry(
+
+  // 읽기와 쓰기를 하나의 직렬 흐름에서 실행 (enqueue 없이 직접 호출)
+  const res = await withRetry(
     () => sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
       range: 'GameState!A:C'
     }),
     'updateGameState.get'
-  ));
+  );
   const rows = res.data.values || [];
   const rowIndex = rows.findIndex((row, i) => i > 0 && row[0] === sessionId);
 
@@ -373,9 +397,7 @@ async function updateGameState(sessionId, updates) {
 
   const mergedState = { ...existingState, ...updates, sessionId, lastUpdated: Date.now() };
 
-  // Deep merge: teamResponses, territories 등 중첩 객체는 shallow merge하면 데이터 소실
-  // (동시 제출 시 race condition 방지)
-  // 빈 객체 {}는 리셋 의도이므로 deep merge 하지 않음
+  // Deep merge: 중첩 객체 보존 (빈 객체 {}는 리셋 의도)
   if (updates.teamResponses && Object.keys(updates.teamResponses).length > 0 && existingState.teamResponses) {
     mergedState.teamResponses = { ...existingState.teamResponses, ...updates.teamResponses };
   }
@@ -388,7 +410,8 @@ async function updateGameState(sessionId, updates) {
   const dataJson = JSON.stringify(mergedState);
 
   if (rowIndex > 0) {
-    await enqueue(() => withRetry(
+    // 쓰기도 직접 호출 (같은 직렬 흐름)
+    await withRetry(
       () => sheets.spreadsheets.values.update({
         spreadsheetId: SHEET_ID,
         range: `GameState!A${rowIndex + 1}:C${rowIndex + 1}`,
@@ -396,9 +419,9 @@ async function updateGameState(sessionId, updates) {
         requestBody: { values: [[sessionId, dataJson, mergedState.lastUpdated]] }
       }),
       'updateGameState.update'
-    ));
+    );
   } else {
-    await enqueue(() => withRetry(
+    await withRetry(
       () => sheets.spreadsheets.values.append({
         spreadsheetId: SHEET_ID,
         range: 'GameState!A:C',
@@ -406,7 +429,7 @@ async function updateGameState(sessionId, updates) {
         requestBody: { values: [[sessionId, dataJson, mergedState.lastUpdated]] }
       }),
       'updateGameState.append'
-    ));
+    );
   }
   invalidateCache('gameState');
   return { success: true };
