@@ -508,13 +508,17 @@ const App: React.FC = () => {
         }
 
         // 동시 응답 시스템 상태 동기화
-        if (state.teamResponses) {
-          setAllTeamResponses(state.teamResponses as unknown as { [teamId: string]: TeamResponse });
+        if (state.teamResponses !== undefined) {
+          const responses = state.teamResponses || {};
+          setAllTeamResponses(Object.keys(responses).length > 0
+            ? responses as unknown as { [teamId: string]: TeamResponse }
+            : {});
         }
         if (state.isRevealed !== undefined) {
           setIsResponsesRevealed(state.isRevealed);
         }
-        if (state.aiComparativeResult) {
+        // aiComparativeResult가 null이면 리셋 (다음 문항 전환 시)
+        if (state.aiComparativeResult !== undefined) {
           setAiComparativeResult(state.aiComparativeResult as unknown as AIComparativeResult);
         }
         if (state.isAnalyzing !== undefined) {

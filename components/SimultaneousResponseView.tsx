@@ -28,9 +28,10 @@ const SimultaneousResponseView: React.FC<SimultaneousResponseViewProps> = ({
   onClose,
   onLogout
 }) => {
-  const [reasoning, setReasoning] = useState(myResponse?.reasoning || '');
+  const [reasoning, setReasoning] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localSubmitted, setLocalSubmitted] = useState(false);
+  const [currentCardId, setCurrentCardId] = useState(card.id);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const MAX_CHARS = 150;
@@ -38,18 +39,22 @@ const SimultaneousResponseView: React.FC<SimultaneousResponseViewProps> = ({
   // 항상 자유 서술 모드 (선택지 제거)
   const isSubmitted = myResponse?.isSubmitted || localSubmitted;
 
-  // 카드가 바뀌면 로컬 상태 리셋 (다음 문항 진입 시 입력창 표시)
+  // 이전 문항의 AI 결과가 남아있으면 무시 (카드가 바뀌었는데 aiResult가 아직 리셋 안 된 경우)
+  const effectiveAiResult = currentCardId === card.id ? aiResult : null;
+
+  // 카드가 바뀌면 모든 로컬 상태 리셋
   useEffect(() => {
+    setCurrentCardId(card.id);
     setReasoning('');
     setLocalSubmitted(false);
     setIsSubmitting(false);
   }, [card.id]);
 
   useEffect(() => {
-    if (!isSubmitted && !aiResult) {
+    if (!isSubmitted && !effectiveAiResult) {
       textareaRef.current?.focus();
     }
-  }, [isSubmitted, aiResult]);
+  }, [isSubmitted, effectiveAiResult]);
 
   const handleSubmit = () => {
     if (isSubmitting || isSubmitted) return;  // 중복 제출 방지
@@ -75,7 +80,7 @@ const SimultaneousResponseView: React.FC<SimultaneousResponseViewProps> = ({
   };
 
   // 내 팀 랭킹 찾기
-  const myRanking = aiResult?.rankings.find(r => r.teamId === team.id);
+  const myRanking = effectiveAiResult?.rankings.find(r => r.teamId === team.id);
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
@@ -94,7 +99,7 @@ const SimultaneousResponseView: React.FC<SimultaneousResponseViewProps> = ({
                 <LogOut size={18} />
               </button>
             )}
-            {aiResult && (
+            {effectiveAiResult && (
               <button
                 onClick={onClose}
                 className="p-2 bg-black/30 hover:bg-black/50 text-white rounded-lg transition-colors"
@@ -120,7 +125,7 @@ const SimultaneousResponseView: React.FC<SimultaneousResponseViewProps> = ({
           </div>
 
           {/* AI 결과 표시 */}
-          {aiResult && (
+          {effectiveAiResult && (
             <div className="mb-6">
               {/* 헤더 */}
               <div className="flex items-center gap-3 mb-5">
@@ -130,7 +135,7 @@ const SimultaneousResponseView: React.FC<SimultaneousResponseViewProps> = ({
 
               {/* 팀별 선택/이유/평가 */}
               <div className="space-y-4 mb-5">
-                {aiResult.rankings.sort((a, b) => a.rank - b.rank).map((ranking) => (
+                {effectiveAiResult.rankings.sort((a, b) => a.rank - b.rank).map((ranking) => (
                   <div
                     key={ranking.teamId}
                     className={`p-4 rounded-lg border-4 ${
@@ -186,7 +191,7 @@ const SimultaneousResponseView: React.FC<SimultaneousResponseViewProps> = ({
               {/* Best Practice */}
               <div className="bg-white p-4 rounded-xl border-4 border-yellow-400">
                 <div className="text-base font-black text-yellow-700 uppercase mb-2">💡 Best Practice</div>
-                <p className="text-lg text-gray-800 font-medium leading-relaxed">{aiResult.guidance}</p>
+                <p className="text-lg text-gray-800 font-medium leading-relaxed">{effectiveAiResult.guidance}</p>
               </div>
 
               {/* 팀별 점수 현황 */}
@@ -199,7 +204,7 @@ const SimultaneousResponseView: React.FC<SimultaneousResponseViewProps> = ({
                   <div className="grid grid-cols-2 gap-2">
                     {allTeams
                       .map(t => {
-                        const ranking = aiResult.rankings.find(r => r.teamId === t.id);
+                        const ranking = effectiveAiResult.rankings.find(r => r.teamId === t.id);
                         const currentScore = t.score ?? 100;
                         const addedScore = ranking?.score ?? 0;
                         const newScore = currentScore + addedScore;
@@ -236,7 +241,7 @@ const SimultaneousResponseView: React.FC<SimultaneousResponseViewProps> = ({
           )}
 
           {/* 응답 공개됨 (AI 결과 없을 때) */}
-          {isRevealed && !aiResult && (
+          {isRevealed && !effectiveAiResult && (
             <div className="mb-6 bg-blue-50 border-4 border-blue-400 p-4 rounded-lg">
               <div className="flex items-center gap-2 mb-3">
                 <Eye size={18} className="text-blue-600" />
@@ -247,7 +252,7 @@ const SimultaneousResponseView: React.FC<SimultaneousResponseViewProps> = ({
           )}
 
           {/* 제출 완료 (공개 전) */}
-          {isSubmitted && !isRevealed && !aiResult && (
+          {isSubmitted && !isRevealed && !effectiveAiResult && (
             <div className="mb-6 bg-green-100 border-4 border-green-500 p-4 rounded-lg text-center">
               <CheckCircle2 size={48} className="text-green-600 mx-auto mb-2" />
               <div className="font-bold text-green-800 text-lg">응답이 제출되었습니다!</div>
@@ -275,7 +280,7 @@ const SimultaneousResponseView: React.FC<SimultaneousResponseViewProps> = ({
           )}
 
           {/* 입력 폼 (제출 전) - 자유 서술 */}
-          {!isSubmitted && !aiResult && (
+          {!isSubmitted && !effectiveAiResult && (
             <>
               {/* 안내 문구 */}
               <div className="mb-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-4 border-blue-400 p-4 rounded-lg">
