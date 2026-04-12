@@ -22,7 +22,7 @@ const Lobby: React.FC<LobbyProps> = ({
   // --- Create Session Form State ---
   const [newName, setNewName] = useState('');
   const [newTeamCount, setNewTeamCount] = useState(4);
-  const [singlePieceMode, setSinglePieceMode] = useState(false);
+  const singlePieceMode = true; // 항상 공통말 모드
   const [isCreating, setIsCreating] = useState(false);
 
   // --- UI State ---
@@ -138,23 +138,7 @@ const Lobby: React.FC<LobbyProps> = ({
                   </div>
                 </div>
 
-                <div>
-                  <label className="block font-bold mb-2 text-sm uppercase">말 설정</label>
-                  <label className="flex items-center gap-3 cursor-pointer p-3 border-4 border-black bg-gray-50 hover:bg-yellow-50 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={singlePieceMode}
-                      onChange={(e) => setSinglePieceMode(e.target.checked)}
-                      className="w-5 h-5 accent-blue-900 cursor-pointer"
-                    />
-                    <div>
-                      <span className="font-black text-sm">공통 말 1개 모드</span>
-                      <p className="text-xs text-gray-500 font-bold mt-0.5">
-                        모든 팀이 하나의 말로 이동하고, 도착한 칸의 문제를 동시에 풀어 최고 점수 팀이 칸을 차지합니다.
-                      </p>
-                    </div>
-                  </label>
-                </div>
+                {/* 공통말 모드 고정 (항상 활성화) */}
 
                 <div className="pt-4">
                   <button

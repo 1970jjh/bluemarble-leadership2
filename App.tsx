@@ -705,7 +705,7 @@ const App: React.FC = () => {
       accessCode,
       createdAt: Date.now(),
       teams: newTeams,
-      ...(singlePieceMode ? { singlePieceMode: true } : {})
+      singlePieceMode: true // 항상 공통말 모드
     };
 
     // Firebase에 저장 (설정되어 있으면)
@@ -1434,9 +1434,13 @@ const App: React.FC = () => {
 
     let selectedCard: GameCard | null = null;
 
-    // 출발 칸 처리 (보너스만 주고 넘어감)
+    // 출발 칸 처리 (위치 업데이트 + 다음 턴)
     if (square.type === SquareType.Start) {
-      updateTeamResources(team.id, { capital: 50 });
+      // 공통 말 모드: 모든 팀 위치를 0으로 업데이트
+      if (currentSession) {
+        const updatedTeams = currentSession.teams.map(t => ({ ...t, position: 0 }));
+        await updateTeamsInSession(updatedTeams);
+      }
       nextTurn();
       return;
     }
