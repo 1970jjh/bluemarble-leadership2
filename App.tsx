@@ -2313,6 +2313,9 @@ ${evaluationGuidelines}
     // 1등 팀 찾기 (영토 소유권 부여용)
     const firstPlaceRanking = rankings.find(r => r.rank === 1);
 
+    // 미션 수행 칸 위치 (공통말이 있어야 할 위치)
+    const missionSquareIndex = territorySquareIndexRef.current ?? currentCardSquareIndex ?? 0;
+
     // 각 팀에 점수 적용 (단일 점수 체계) - teamId 또는 teamName으로 매칭
     const updatedTeams = currentSession.teams.map(team => {
       // 먼저 teamId로 찾기
@@ -2351,9 +2354,9 @@ ${evaluationGuidelines}
           position: team.position
         };
 
-        return { ...team, score: newScore, history: [...team.history, turnRecord] };
+        return { ...team, score: newScore, position: missionSquareIndex, history: [...team.history, turnRecord] };
       }
-      return team;
+      return { ...team, position: missionSquareIndex };
     });
 
     await updateTeamsInSession(updatedTeams);
