@@ -1357,27 +1357,59 @@ const App: React.FC = () => {
     if (square.type === SquareType.City && territory) {
       console.log(`[LandOnSquare] 영토 소유자: ${territory.ownerTeamName}`);
 
-      // 공통 말 모드: 이미 선점된 칸 → 선점팀 +40점 보너스 + 주사위 재굴림
+      // 공통 말 모드: 이미 선점된 칸 → 소유팀 +40점 + 다음 빈 칸까지 자동 이동
       if (isSinglePiece) {
         if (currentSession) {
           const TERRITORY_BONUS = 40;
-          const ownerTeamName = territory.ownerTeamName;
 
-          // 선점팀에게 +40점 보너스
-          const updatedTeams = currentSession.teams.map(t => {
-            if (t.id === territory.ownerTeamId) {
-              const newScore = (t.score ?? INITIAL_SCORE) + TERRITORY_BONUS;
-              return { ...t, position: squareIndex, score: newScore };
+          // 현재 칸부터 다음 빈 칸(미선점)을 찾을 때까지 반복 이동
+          let currentPos = squareIndex;
+          let totalBonus: { [teamId: string]: { name: string; amount: number } } = {};
+
+          // 현재 도착 칸의 소유팀 보너스
+          totalBonus[territory.ownerTeamId] = {
+            name: territory.ownerTeamName,
+            amount: TERRITORY_BONUS
+          };
+          addLog(`🏠 ${territory.ownerTeamName} 선점 칸(${squareIndex}번) 도착! +${TERRITORY_BONUS}점`);
+
+          // 다음 칸들을 확인하며 빈 칸 찾기
+          let nextPos = (currentPos + 1) % BOARD_SIZE;
+          while (nextPos !== 0) { // 출발 칸(0)은 건너뛰지 않음
+            const nextTerritory = territories[nextPos.toString()];
+            if (!nextTerritory) {
+              // 빈 칸 발견 → 여기에 도착
+              break;
             }
-            return { ...t, position: squareIndex };
+            // 선점된 칸 → 소유팀에게 보너스 추가
+            if (!totalBonus[nextTerritory.ownerTeamId]) {
+              totalBonus[nextTerritory.ownerTeamId] = { name: nextTerritory.ownerTeamName, amount: 0 };
+            }
+            totalBonus[nextTerritory.ownerTeamId].amount += TERRITORY_BONUS;
+            addLog(`🏠 ${nextTerritory.ownerTeamName} 선점 칸(${nextPos}번) 통과! +${TERRITORY_BONUS}점`);
+            nextPos = (nextPos + 1) % BOARD_SIZE;
+          }
+
+          // 보너스 지급 + 위치 업데이트
+          const updatedTeams = currentSession.teams.map(t => {
+            const bonus = totalBonus[t.id];
+            if (bonus) {
+              return { ...t, position: nextPos, score: (t.score ?? INITIAL_SCORE) + bonus.amount };
+            }
+            return { ...t, position: nextPos };
           });
           await updateTeamsInSession(updatedTeams);
 
-          addLog(`🏠 ${ownerTeamName} 선점 칸 도착! ${ownerTeamName}에게 +${TERRITORY_BONUS}점 보너스`);
+          // 도착한 칸이 출발 칸이면 Idle
+          if (nextPos === 0) {
+            setGamePhase(GamePhase.Idle);
+            setTurnTimeLeft(240);
+            return;
+          }
 
-          // 주사위 재굴림을 위해 Idle 상태로 전환
-          setGamePhase(GamePhase.Idle);
-          setTurnTimeLeft(240);
+          // 빈 칸에 도착 → 해당 칸의 카드 문제 진행
+          const landingTeam = { ...team, position: nextPos };
+          handleLandOnSquare(landingTeam, nextPos);
         }
         return;
       }
