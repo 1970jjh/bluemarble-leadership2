@@ -550,6 +550,7 @@ async function updateTeamResponseAiEvaluation(payload) {
 async function uploadImageToDrive(payload) {
   const { fileName, mimeType, base64Data } = payload;
   if (!DRIVE_FOLDER_ID) throw new Error('GOOGLE_DRIVE_FOLDER_ID not configured');
+  if (!base64Data) throw new Error('base64Data is required');
 
   const auth = getAuth();
   const drive = google.drive({ version: 'v3', auth });
@@ -559,32 +560,40 @@ async function uploadImageToDrive(payload) {
   const stream = new PassThrough();
   stream.end(buffer);
 
-  // Google Drive에 파일 업로드
-  const file = await drive.files.create({
-    requestBody: {
-      name: fileName || `board_${Date.now()}.png`,
-      parents: [DRIVE_FOLDER_ID]
-    },
-    media: {
-      mimeType: mimeType || 'image/png',
-      body: stream
-    },
-    fields: 'id'
-  });
+  try {
+    // Google Drive에 파일 업로드
+    const file = await drive.files.create({
+      requestBody: {
+        name: fileName || `board_${Date.now()}.png`,
+        parents: [DRIVE_FOLDER_ID]
+      },
+      media: {
+        mimeType: mimeType || 'image/png',
+        body: stream
+      },
+      fields: 'id'
+    });
 
-  const fileId = file.data.id;
+    const fileId = file.data.id;
 
-  // 파일을 공개 읽기 권한으로 설정
-  await drive.permissions.create({
-    fileId: fileId,
-    requestBody: { role: 'reader', type: 'anyone' }
-  });
+    // 파일을 공개 읽기 권한으로 설정
+    await drive.permissions.create({
+      fileId: fileId,
+      requestBody: { role: 'reader', type: 'anyone' }
+    });
 
-  return {
-    success: true,
-    fileId: fileId,
-    url: `https://drive.google.com/uc?export=view&id=${fileId}`
-  };
+    return {
+      success: true,
+      fileId: fileId,
+      url: `https://drive.google.com/uc?export=view&id=${fileId}`
+    };
+  } catch (err) {
+    // 상세 에러 메시지 포함
+    const detail = err.response?.data?.error?.message || err.message || 'Unknown error';
+    const code = err.response?.status || err.code || 500;
+    console.error(`[Drive Upload] 실패 (${code}): ${detail}`);
+    throw new Error(`Drive upload failed (${code}): ${detail}`);
+  }
 }
 
 // ========================
