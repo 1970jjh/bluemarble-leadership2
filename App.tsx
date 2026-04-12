@@ -3440,7 +3440,7 @@ ${evaluationGuidelines}
           onSubmit={handleTeamSaveOnly}
           result={aiEvaluationResult}
           isProcessing={isAiProcessing}
-          onClose={handleApplyResult}
+          onClose={() => {}} // X 버튼은 비활성 (점수 적용 & 다음 턴으로만 닫힘)
           teamName={currentTeam?.name}
           // 관리자 뷰 전용 props
           isAdminView={true}
