@@ -68,7 +68,6 @@ const Lobby: React.FC<LobbyProps> = ({
       await onCreateSession(newName, GameVersion.Custom, newTeamCount, singlePieceMode);
       setNewName('');
       setNewTeamCount(4);
-      setSinglePieceMode(false);
       alert("새로운 세션이 생성되었습니다.");
     } catch (error) {
       console.error('세션 생성 실패:', error);
