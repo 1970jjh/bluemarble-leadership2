@@ -1372,15 +1372,28 @@ const App: React.FC = () => {
     if (square.type === SquareType.City && territory) {
       console.log(`[LandOnSquare] 영토 소유자: ${territory.ownerTeamName}`);
 
-      // 공통 말 모드: 이미 풀린 칸이면 통행료 없이 바로 다음 턴
+      // 공통 말 모드: 이미 선점된 칸 → 선점팀 +40점 보너스 + 주사위 재굴림
       if (isSinglePiece) {
         if (currentSession) {
+          const TERRITORY_BONUS = 40;
+          const ownerTeamName = territory.ownerTeamName;
+
+          // 선점팀에게 +40점 보너스
           const updatedTeams = currentSession.teams.map(t => {
+            if (t.id === territory.ownerTeamId) {
+              const newScore = (t.score ?? INITIAL_SCORE) + TERRITORY_BONUS;
+              return { ...t, position: squareIndex, score: newScore };
+            }
             return { ...t, position: squareIndex };
           });
           await updateTeamsInSession(updatedTeams);
+
+          addLog(`🏠 ${ownerTeamName} 선점 칸 도착! ${ownerTeamName}에게 +${TERRITORY_BONUS}점 보너스`);
+
+          // 주사위 재굴림을 위해 Idle 상태로 전환
+          setGamePhase(GamePhase.Idle);
+          setTurnTimeLeft(240);
         }
-        setGamePhase(GamePhase.Idle);
         return;
       }
 
@@ -1437,10 +1450,17 @@ const App: React.FC = () => {
     // 출발 칸 처리 (위치 업데이트 + 다음 턴)
     if (square.type === SquareType.Start) {
       if (currentSession) {
+        // 위치를 0으로 확정하고 저장 완료까지 대기
         const updatedTeams = currentSession.teams.map(t => ({ ...t, position: 0 }));
         await updateTeamsInSession(updatedTeams);
+        // 서버에도 위치 저장
+        if (currentSessionId) {
+          await firestoreService.updateTeams(currentSessionId, updatedTeams);
+        }
       }
-      nextTurn();
+      // Idle로 전환 (nextTurn이 위치를 덮어쓰지 않도록)
+      setGamePhase(GamePhase.Idle);
+      setTurnTimeLeft(240);
       return;
     }
 
