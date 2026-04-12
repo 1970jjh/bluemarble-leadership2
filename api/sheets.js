@@ -372,6 +372,19 @@ async function updateGameState(sessionId, updates) {
   }
 
   const mergedState = { ...existingState, ...updates, sessionId, lastUpdated: Date.now() };
+
+  // Deep merge: teamResponses, territories 등 중첩 객체는 shallow merge하면 데이터 소실
+  // (동시 제출 시 race condition 방지)
+  // 빈 객체 {}는 리셋 의도이므로 deep merge 하지 않음
+  if (updates.teamResponses && Object.keys(updates.teamResponses).length > 0 && existingState.teamResponses) {
+    mergedState.teamResponses = { ...existingState.teamResponses, ...updates.teamResponses };
+  }
+  if (updates.territories && Object.keys(updates.territories).length > 0 && existingState.territories) {
+    mergedState.territories = { ...existingState.territories, ...updates.territories };
+  }
+  if (updates.spectatorVotes && Object.keys(updates.spectatorVotes).length > 0 && existingState.spectatorVotes) {
+    mergedState.spectatorVotes = { ...existingState.spectatorVotes, ...updates.spectatorVotes };
+  }
   const dataJson = JSON.stringify(mergedState);
 
   if (rowIndex > 0) {
