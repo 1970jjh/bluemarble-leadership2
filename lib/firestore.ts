@@ -107,19 +107,6 @@ export async function updateTeam(sessionId: string, teamId: string, updates: Par
   await updateTeams(sessionId, updatedTeams);
 }
 
-export async function addTurnRecord(sessionId: string, teamId: string, record: TurnRecord): Promise<void> {
-  const session = await getSession(sessionId);
-  if (!session) return;
-
-  const updatedTeams = session.teams.map(team => {
-    if (team.id === teamId) {
-      return { ...team, history: [...team.history, record] };
-    }
-    return team;
-  });
-
-  await updateTeams(sessionId, updatedTeams);
-}
 
 // ========================
 // 게임 상태(GameState) 관련
@@ -215,34 +202,6 @@ export async function addGameLog(sessionId: string, log: string): Promise<void> 
   });
 }
 
-export async function updateSpectatorVote(
-  sessionId: string,
-  optionId: string,
-  previousOptionId: string | null,
-  teamName: string
-): Promise<void> {
-  const state = await getGameState(sessionId);
-  const currentVotes: { [key: string]: string[] } = {};
-
-  if (state?.spectatorVotes) {
-    Object.keys(state.spectatorVotes).forEach(key => {
-      currentVotes[key] = [...(state.spectatorVotes![key] || [])];
-    });
-  }
-
-  if (previousOptionId && currentVotes[previousOptionId]) {
-    currentVotes[previousOptionId] = currentVotes[previousOptionId].filter(name => name !== teamName);
-  }
-
-  if (!currentVotes[optionId]) {
-    currentVotes[optionId] = [];
-  }
-  if (!currentVotes[optionId].includes(teamName)) {
-    currentVotes[optionId].push(teamName);
-  }
-
-  await updateGameState(sessionId, { spectatorVotes: currentVotes });
-}
 
 // ========================
 // 동시 응답 시스템
@@ -317,10 +276,6 @@ export interface TeamResponseRow {
   timestamp: number;
 }
 
-export async function getTeamResponseRows(sessionId: string): Promise<TeamResponseRow[]> {
-  return await callAPI('getTeamResponseRows', { sessionId });
-}
-
 export async function updateTeamResponseAiEvaluation(
   sessionId: string,
   cardTitle: string,
@@ -378,15 +333,6 @@ export async function updateMultipleTeamScores(
   });
 
   await updateTeams(sessionId, updatedTeams);
-}
-
-export async function getTerritoryOwner(
-  sessionId: string,
-  squareIndex: number
-): Promise<{ ownerTeamId: string; ownerTeamName: string; ownerTeamColor: string } | null> {
-  const state = await getGameState(sessionId);
-  const territory = state?.territories?.[squareIndex.toString()];
-  return territory || null;
 }
 
 // ========================

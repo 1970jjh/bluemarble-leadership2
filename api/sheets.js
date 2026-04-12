@@ -1,5 +1,4 @@
 import { google } from 'googleapis';
-import { PassThrough } from 'stream';
 
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID;
@@ -586,58 +585,6 @@ async function updateTeamResponseAiEvaluation(payload) {
 }
 
 // ========================
-// Google Drive 이미지 업로드
-// ========================
-
-async function uploadImageToDrive(payload) {
-  const { fileName, mimeType, base64Data } = payload;
-  if (!DRIVE_FOLDER_ID) throw new Error('GOOGLE_DRIVE_FOLDER_ID not configured');
-  if (!base64Data) throw new Error('base64Data is required');
-
-  const auth = getAuth();
-  const drive = google.drive({ version: 'v3', auth });
-
-  // base64 → Buffer → Stream (Vercel 호환)
-  const buffer = Buffer.from(base64Data, 'base64');
-  const stream = new PassThrough();
-  stream.end(buffer);
-
-  try {
-    // Google Drive에 파일 업로드
-    const file = await drive.files.create({
-      requestBody: {
-        name: fileName || `board_${Date.now()}.png`,
-        parents: [DRIVE_FOLDER_ID]
-      },
-      media: {
-        mimeType: mimeType || 'image/png',
-        body: stream
-      },
-      fields: 'id'
-    });
-
-    const fileId = file.data.id;
-
-    // 파일을 공개 읽기 권한으로 설정
-    await drive.permissions.create({
-      fileId: fileId,
-      requestBody: { role: 'reader', type: 'anyone' }
-    });
-
-    return {
-      success: true,
-      fileId: fileId,
-      url: `https://drive.google.com/uc?export=view&id=${fileId}`
-    };
-  } catch (err) {
-    // 상세 에러 메시지 포함
-    const detail = err.response?.data?.error?.message || err.message || 'Unknown error';
-    const code = err.response?.status || err.code || 500;
-    console.error(`[Drive Upload] 실패 (${code}): ${detail}`);
-    throw new Error(`Drive upload failed (${code}): ${detail}`);
-  }
-}
-
 // ========================
 // Request Handler
 // ========================
@@ -696,9 +643,6 @@ export default async function handler(req, res) {
         break;
       case 'updateTeamResponseAiEvaluation':
         data = await updateTeamResponseAiEvaluation(payload);
-        break;
-      case 'uploadImage':
-        data = await uploadImageToDrive(payload);
         break;
       default:
         return res.status(400).json({ ok: false, error: `Unknown action: ${action}` });

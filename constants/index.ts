@@ -28,29 +28,6 @@ export const INITIAL_RESOURCES: ResourceState = {
   insight: 30,    // 통찰력 (시작: 30, 목표: 100)
 };
 
-// 한 바퀴 완주 보너스 - 완주한 팀에게 +60점
-export const LAP_BONUS_POINTS = 60;  // 완주 보너스 점수
-
-// Legacy 호환용 (기존 코드 호환)
-export const LAP_BONUS_PER_TEAM = 20;  // 사용되지 않음
-
-// 더블 보너스 (주사위 2개 같은 숫자) - 평점 30점
-export const DOUBLE_BONUS_POINTS = 30;
-
-// Legacy 호환용 (기존 코드 호환)
-export const LAP_BONUS: Partial<ResourceState> = {
-  energy: 0,
-  trust: 0,
-  competency: 0,
-  insight: 0,
-};
-
-export const DOUBLE_BONUS: Partial<ResourceState> = {
-  energy: 0,
-  trust: 0,
-  competency: 0,
-  insight: 0,
-};
 
 // ============================================================
 // 전체 카드 통합 (커스텀 모드에서는 이벤트 카드만 기본 제공)

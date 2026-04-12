@@ -9,10 +9,8 @@ import Lobby from './components/Lobby';
 import MobileTeamView from './components/MobileTeamView';
 import DiceResultOverlay from './components/DiceResultOverlay';
 import CompetencyCardPreview from './components/CompetencyCardPreview';
-import LapBonusPopup from './components/LapBonusPopup';
 import LotteryBonusPopup from './components/LotteryBonusPopup';
 import RiskCardPopup from './components/RiskCardPopup';
-import TollPopup from './components/TollPopup';
 import AdminDashboard from './components/AdminDashboard';
 import GameRulesModal from './components/GameRulesModal';
 import SimultaneousResponseView from './components/SimultaneousResponseView';
@@ -39,7 +37,6 @@ import {
   BOARD_SIZE,
   INITIAL_RESOURCES,
   INITIAL_SCORE,
-  LAP_BONUS_POINTS,
   EVENT_CARDS,
   getChanceCardType,
   CHANCE_CARD_SQUARES,
@@ -93,24 +90,11 @@ const App: React.FC = () => {
   const [pendingDice, setPendingDice] = useState<[number, number]>([1, 1]);  // 대기 중인 주사위 결과
   const [showCompetencyPreview, setShowCompetencyPreview] = useState(false);  // 역량카드 미리보기
   const [pendingSquare, setPendingSquare] = useState<any>(null);  // 도착 예정 칸
-  const [showLapBonus, setShowLapBonus] = useState(false);  // 한 바퀴 완주 보너스 팝업
-  const [lapBonusInfo, setLapBonusInfo] = useState<{ teamName: string; teamId: string; lapCount: number } | null>(null);  // 보너스 받을 팀 정보
-    const [showLotteryBonus, setShowLotteryBonus] = useState(false);  // 복권 보너스 팝업
+  const [showLotteryBonus, setShowLotteryBonus] = useState(false);  // 복권 보너스 팝업
   const [lotteryBonusInfo, setLotteryBonusInfo] = useState<{ teamName: string; chanceCardNumber: number } | null>(null);
   const [showRiskCard, setShowRiskCard] = useState(false);  // 리스크 카드 팝업
   const [riskCardInfo, setRiskCardInfo] = useState<{ teamName: string; chanceCardNumber: number } | null>(null);
   const [isRiskCardMode, setIsRiskCardMode] = useState(false);  // 리스크 카드 상황 (모든 점수 마이너스)
-  const [showTollPopup, setShowTollPopup] = useState(false);  // 통행료 팝업
-  const [tollPopupInfo, setTollPopupInfo] = useState<{
-    payerTeamName: string;
-    payerTeamId: string;  // 🎯 지불 팀 ID
-    receiverTeamName: string;
-    receiverTeamId: string;  // 🎯 수령 팀 ID
-    tollAmount: number;
-    squareIndex: number;
-    pendingTeam: Team;
-    pendingNewPos: number;
-  } | null>(null);
 
   // 커스텀 모드 특수 효과 상태
   const [customScoreMultiplier, setCustomScoreMultiplier] = useState(1);  // 커스텀 모드 점수 배수 (2배 찬스, 3배 찬스)
@@ -145,7 +129,6 @@ const App: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);        // 저장 중 여부
 
   // 레거시 관람자 투표 상태 (동시 응답 시스템으로 대체됨 - 호환성 유지용)
-  const [spectatorVotes, setSpectatorVotes] = useState<{ [optionId: string]: string[] }>({});
   const [mySpectatorVote, setMySpectatorVote] = useState<Choice | null>(null);
 
   // ============================================================
@@ -163,7 +146,6 @@ const App: React.FC = () => {
     ownerTeamColor: string;
     acquiredAt: number;
   } }>({});
-  const TOLL_AMOUNT = 30;  // 통행료 금액
 
   // 관리자 대시보드 상태
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
@@ -1397,48 +1379,6 @@ const App: React.FC = () => {
         return;
       }
 
-      // ===== 케이스 A: 다른 팀 소유 → 통행료 팝업 (버튼 클릭 시 지불) =====
-      if (territory.ownerTeamId !== team.id && currentSession) {
-        const multiplier = getSquareMultiplier(squareIndex);
-        const tollAmount = TOLL_AMOUNT * multiplier;
-
-        // 🎯 위치만 업데이트 (통행료는 버튼 클릭 시 지불)
-        const updatedTeams = currentSession.teams.map(t => {
-          if (t.id === team.id) {
-            return { ...t, position: squareIndex };
-          }
-          return t;
-        });
-        await updateTeamsInSession(updatedTeams);
-
-        // 통행료 팝업 표시 (버튼 클릭 시 통행료 지불)
-        setTollPopupInfo({
-          payerTeamName: team.name,
-          payerTeamId: team.id,  // 🎯 지불 팀 ID 저장
-          receiverTeamName: territory.ownerTeamName,
-          receiverTeamId: territory.ownerTeamId,  // 🎯 수령 팀 ID 저장
-          tollAmount: tollAmount,
-          squareIndex: squareIndex,
-          pendingTeam: team,
-          pendingNewPos: squareIndex
-        });
-        setShowTollPopup(true);
-        return;
-      }
-
-      // ===== 케이스 B: 자기 소유 → 통행료 없이 관리자 주사위 입력 대기 =====
-      // 🎯 위치 업데이트 (캐릭터가 도착한 칸에 유지)
-      if (currentSession) {
-        const updatedTeams = currentSession.teams.map(t => {
-          if (t.id === team.id) {
-            return { ...t, position: squareIndex };
-          }
-          return t;
-        });
-        await updateTeamsInSession(updatedTeams);
-      }
-      setGamePhase(GamePhase.Idle);
-      return;
     }
 
     // 커스텀 모드: 세션의 커스텀 카드 사용, 없으면 이벤트 카드 사용
@@ -1516,8 +1456,7 @@ const App: React.FC = () => {
             aiResult: null,
             isSubmitted: false,
             isAiProcessing: false,
-            spectatorVotes: {},  // 관람자 투표 초기화
-            gameLogs: gameLogsRef.current,
+              gameLogs: gameLogsRef.current,
             lastUpdated: Date.now()
           }).catch(err => console.error('Firebase 상태 저장 실패:', err));
         }
@@ -1756,137 +1695,6 @@ const App: React.FC = () => {
     }
   };
 
-  // 보류 중인 이동 정보 (한 바퀴 보너스 팝업 후 계속 이동하기 위함)
-  const pendingMoveRef = useRef<{ teamToMove: Team; remainingSteps: number; finalPos: number } | null>(null);
-
-  // 추가 주사위 굴리기 (이미 푼 카드 도착 시)
-  const rollExtraDiceAndMove = (team: Team, fromPos: number) => {
-    const extraDie1 = Math.ceil(Math.random() * 6);
-    const extraDie2 = Math.ceil(Math.random() * 6);
-    const extraSteps = extraDie1 + extraDie2;
-
-    // 새 위치 계산
-    let newPos = fromPos + extraSteps;
-    let passedStart = false;
-    if (newPos >= BOARD_SIZE) {
-      newPos = newPos % BOARD_SIZE;
-      passedStart = true;
-    }
-
-    // 팀 위치 업데이트
-    if (currentSession) {
-      const newLapCount = team.lapCount + (passedStart ? 1 : 0);
-
-      if (passedStart) {
-        // 한바퀴 보너스: 완주한 팀에게만 +60점 - score 필드 업데이트
-        const updatedTeams = currentSession.teams.map(t => {
-          if (t.id === team.id) {
-            // 완주한 팀: +60점
-            const currentScore = t.score ?? INITIAL_SCORE;
-            return { ...t, position: newPos, score: currentScore + LAP_BONUS_POINTS, lapCount: newLapCount };
-          }
-          return t;
-        });
-        updateTeamsInSession(updatedTeams);
-        soundEffects.playCelebration();
-      } else {
-        // 한바퀴 통과 없이 위치만 업데이트
-        const updatedTeams = currentSession.teams.map(t => {
-          if (t.id === team.id) {
-            return { ...t, position: newPos };
-          }
-          return t;
-        });
-        updateTeamsInSession(updatedTeams);
-      }
-    }
-
-    // 새 위치에서 다시 handleLandOnSquare 호출 (재귀)
-    setTimeout(() => {
-      handleLandOnSquare({ ...team, position: newPos }, newPos);
-    }, 1000);
-  };
-
-  // 통행료 팝업 완료 핸들러 (버튼 클릭 시 호출)
-  const handleTollPopupComplete = async () => {
-    if (!tollPopupInfo || !currentSession) {
-      setShowTollPopup(false);
-      setTollPopupInfo(null);
-      return;
-    }
-
-    const { payerTeamId, receiverTeamId, tollAmount, pendingTeam, payerTeamName, receiverTeamName } = tollPopupInfo;
-
-    // 🎯 통행료 지불 (버튼 클릭 시에만 실행) - score 필드 업데이트
-    const updatedTeams = currentSession.teams.map(t => {
-      if (t.id === payerTeamId) {
-        // 지불 팀: 30점 차감
-        const currentScore = t.score ?? INITIAL_SCORE;
-        const newScore = Math.max(0, currentScore - tollAmount);
-        return { ...t, score: newScore };
-      } else if (t.id === receiverTeamId) {
-        // 소유권 팀: 30점 획득
-        const currentScore = t.score ?? INITIAL_SCORE;
-        return { ...t, score: currentScore + tollAmount };
-      }
-      return t;
-    });
-
-    // 즉시 점수 반영
-    await updateTeamsInSession(updatedTeams);
-
-    // 🎯 보고서용 로그: 통행료 지불 내역
-    addLog(`━━━━━━ [통행료 지불] ━━━━━━`);
-    addLog(`💰 ${payerTeamName} → ${receiverTeamName}: ${tollAmount}점`);
-    addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-
-    setShowTollPopup(false);
-    setTollPopupInfo(null);
-    setGamePhase(GamePhase.Idle);
-  };
-
-  // 한 바퀴 보너스 팝업 완료 핸들러 (버튼 클릭 시 호출)
-  const handleLapBonusComplete = async () => {
-    if (!lapBonusInfo || !currentSession) {
-      setShowLapBonus(false);
-      setLapBonusInfo(null);
-      return;
-    }
-
-    const { teamId, teamName, lapCount } = lapBonusInfo;
-
-    // 🎯 한바퀴 보너스 지급 (버튼 클릭 시에만 실행)
-    const isSinglePiece = currentSession.singlePieceMode === true;
-    const updatedTeams = currentSession.teams.map(t => {
-      if (isSinglePiece || t.id === teamId) {
-        // 공통말: 모든 팀에게 보너스 / 개별말: 해당 팀만
-        const currentScore = t.score ?? INITIAL_SCORE;
-        return { ...t, score: currentScore + LAP_BONUS_POINTS, lapCount: lapCount };
-      }
-      return t;
-    });
-
-    // 즉시 점수 반영
-    await updateTeamsInSession(updatedTeams);
-    soundEffects.playCelebration();
-
-    setShowLapBonus(false);
-    setLapBonusInfo(null);
-
-    // 보류 중인 이동이 있으면 계속
-    if (pendingMoveRef.current) {
-      const { teamToMove, remainingSteps, finalPos } = pendingMoveRef.current;
-      pendingMoveRef.current = null;
-
-      if (remainingSteps > 0) {
-        // 남은 스텝 이동 계속
-        continueMove(teamToMove, remainingSteps, finalPos);
-      } else {
-        // 이동 완료 (스타트 지점에 정확히 도착한 경우)
-        finishMove(teamToMove, finalPos);
-      }
-    }
-  };
 
   // x2/x3 배율 알림 완료 핸들러
   const handleMultiplierAlertComplete = () => {
@@ -1916,67 +1724,11 @@ const App: React.FC = () => {
           aiResult: null,
           isSubmitted: false,
           isAiProcessing: false,
-          spectatorVotes: {},
           gameLogs: gameLogsRef.current,
           lastUpdated: Date.now()
         }).catch(err => console.error('Firebase 상태 저장 실패:', err));
       }
     }
-  };
-
-  // 남은 스텝 계속 이동
-  const continueMove = (teamToMove: Team, remainingSteps: number, finalPos: number) => {
-    const isSinglePiece = currentSession?.singlePieceMode === true;
-    let currentStep = 0;
-    const startPos = teamToMove.position;
-
-    const moveOneStep = () => {
-      currentStep++;
-      const intermediatePos = (startPos + currentStep) % BOARD_SIZE;
-
-      soundEffects.playMove();
-
-      // 최신 세션 상태 가져오기 (closure 문제 해결)
-      setSessions(prevSessions => {
-        const session = prevSessions.find(s => s.id === currentSessionId);
-        if (!session) return prevSessions;
-
-        const updatedTeams = session.teams.map(t => {
-          // 공통 말 모드: 모든 팀 위치를 함께 이동
-          if (isSinglePiece) {
-            return { ...t, position: intermediatePos };
-          }
-          if (t.id === teamToMove.id) {
-            return { ...t, position: intermediatePos };
-          }
-          return t;
-        });
-
-        // Firebase 업데이트 (비동기로 처리)
-        if (currentSessionId) {
-          firestoreService.updateTeams(currentSessionId, updatedTeams).catch(err =>
-            console.warn('Firebase 위치 업데이트 실패:', err)
-          );
-        }
-
-        return prevSessions.map(s => {
-          if (s.id === currentSessionId) {
-            return { ...s, teams: updatedTeams };
-          }
-          return s;
-        });
-      });
-
-      if (currentStep >= remainingSteps) {
-        finishMove({ ...teamToMove, position: finalPos }, finalPos);
-        return;
-      }
-
-      // 다음 스텝 예약 (0.8초에 한 칸)
-      setTimeout(moveOneStep, 800);
-    };
-
-    setTimeout(moveOneStep, 1500);
   };
 
   // 역량카드 미리보기 완료 핸들러
@@ -2966,7 +2718,6 @@ ${evaluationGuidelines}
           aiResult: null,
           isSubmitted: false,
           isAiProcessing: false,
-          spectatorVotes: {},  // 관람자 투표 초기화
           gameLogs: gameLogsRef.current,
           lastUpdated: Date.now()
         });
@@ -3722,24 +3473,6 @@ ${evaluationGuidelines}
         duration={5000}
       />
 
-      {/* 한 바퀴 완주 보너스 팝업 */}
-      <LapBonusPopup
-        visible={showLapBonus}
-        teamName={lapBonusInfo?.teamName || ''}
-        lapCount={lapBonusInfo?.lapCount || 1}
-        bonusAmount={LAP_BONUS_POINTS}
-        onPayBonus={handleLapBonusComplete}
-      />
-
-      {/* 통행료 팝업 (이미 푼 카드 도착 시) */}
-      <TollPopup
-        visible={showTollPopup}
-        payerTeamName={tollPopupInfo?.payerTeamName || ''}
-        receiverTeamName={tollPopupInfo?.receiverTeamName || ''}
-        tollAmount={tollPopupInfo?.tollAmount || 0}
-        squareIndex={tollPopupInfo?.squareIndex || 0}
-        onPayToll={handleTollPopupComplete}
-      />
 
       {/* x2/x3 배율 알림 팝업 */}
       {showMultiplierAlert && (
