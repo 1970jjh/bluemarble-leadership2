@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import { Readable } from 'stream';
+import { PassThrough } from 'stream';
 
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID;
@@ -554,50 +554,36 @@ async function uploadImageToDrive(payload) {
   const auth = getAuth();
   const drive = google.drive({ version: 'v3', auth });
 
-  // base64 → Buffer
+  // base64 → Buffer → Stream (Vercel 호환)
   const buffer = Buffer.from(base64Data, 'base64');
+  const stream = new PassThrough();
+  stream.end(buffer);
 
   // Google Drive에 파일 업로드
-  const fileMetadata = {
-    name: fileName || `board_${Date.now()}.png`,
-    parents: [DRIVE_FOLDER_ID]
-  };
-
-  const media = {
-    mimeType: mimeType || 'image/png',
-    body: Readable.from(buffer)
-  };
-
-  const file = await withRetry(
-    () => drive.files.create({
-      requestBody: fileMetadata,
-      media: media,
-      fields: 'id, webViewLink, webContentLink'
-    }),
-    'uploadImageToDrive'
-  );
+  const file = await drive.files.create({
+    requestBody: {
+      name: fileName || `board_${Date.now()}.png`,
+      parents: [DRIVE_FOLDER_ID]
+    },
+    media: {
+      mimeType: mimeType || 'image/png',
+      body: stream
+    },
+    fields: 'id'
+  });
 
   const fileId = file.data.id;
 
   // 파일을 공개 읽기 권한으로 설정
-  await withRetry(
-    () => drive.permissions.create({
-      fileId: fileId,
-      requestBody: {
-        role: 'reader',
-        type: 'anyone'
-      }
-    }),
-    'setFilePermission'
-  );
-
-  // 직접 접근 가능한 URL 반환
-  const directUrl = `https://drive.google.com/uc?export=view&id=${fileId}`;
+  await drive.permissions.create({
+    fileId: fileId,
+    requestBody: { role: 'reader', type: 'anyone' }
+  });
 
   return {
     success: true,
     fileId: fileId,
-    url: directUrl
+    url: `https://drive.google.com/uc?export=view&id=${fileId}`
   };
 }
 
