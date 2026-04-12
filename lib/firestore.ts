@@ -385,7 +385,7 @@ export function subscribeToSession(
   return createPoller(
     () => getSession(sessionId),
     callback,
-    8000, // 8초 간격
+    3000, // 3초 간격
     'subscribeToSession'
   );
 }
@@ -397,7 +397,7 @@ export function subscribeToGameState(
   return createPoller(
     () => getGameState(sessionId),
     callback,
-    5000, // 5초 간격
+    2000, // 2초 간격
     'subscribeToGameState'
   );
 }
@@ -408,7 +408,7 @@ export function subscribeToAllSessions(
   return createPoller(
     () => getAllSessions(),
     callback,
-    10000, // 10초 간격
+    5000, // 5초 간격
     'subscribeToAllSessions'
   );
 }

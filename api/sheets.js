@@ -66,7 +66,7 @@ function enqueue(fn) {
 
 // 서버 측 캐시 (Vercel 서버리스 함수의 warm instance에서 유지)
 const cache = {};
-const CACHE_TTL = 3000; // 3초 캐시
+const CACHE_TTL = 1500; // 1.5초 캐시
 
 function getCached(key) {
   const entry = cache[key];
