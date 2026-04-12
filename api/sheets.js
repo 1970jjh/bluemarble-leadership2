@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import { Readable } from 'stream';
 
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID;
@@ -564,7 +565,7 @@ async function uploadImageToDrive(payload) {
 
   const media = {
     mimeType: mimeType || 'image/png',
-    body: require('stream').Readable.from(buffer)
+    body: Readable.from(buffer)
   };
 
   const file = await withRetry(
