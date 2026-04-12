@@ -6,9 +6,9 @@ const MAX_FILE_SIZE = 3 * 1024 * 1024;
 // 허용되는 이미지 타입
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
-// 압축 후 목표 크기: ~60KB (base64로 ~80K chars, 세션 데이터에 저장 가능)
-const TARGET_SIZE = 60 * 1024;
-const MAX_DIMENSION = 800;
+// 압축 후 목표 크기: ~150KB (base64로 ~200K chars, 5셀 분할 저장으로 충분)
+const TARGET_SIZE = 150 * 1024;
+const MAX_DIMENSION = 1024;
 
 export interface UploadResult {
   success: boolean;
@@ -38,13 +38,13 @@ function compressImage(file: File): Promise<string> {
       canvas.height = height;
       ctx!.drawImage(img, 0, 0, width, height);
 
-      // JPEG로 압축 (품질 조절하여 목표 크기 달성)
-      let quality = 0.7;
+      // JPEG로 압축 (높은 품질에서 시작, 목표 크기까지 점진적 압축)
+      let quality = 0.85;
       let dataUrl = canvas.toDataURL('image/jpeg', quality);
 
-      // 목표 크기보다 크면 품질을 낮춤
-      while (dataUrl.length > TARGET_SIZE * 1.37 && quality > 0.1) {
-        quality -= 0.1;
+      // 목표 크기보다 크면 품질을 점진적으로 낮춤
+      while (dataUrl.length > TARGET_SIZE * 1.37 && quality > 0.3) {
+        quality -= 0.05;
         dataUrl = canvas.toDataURL('image/jpeg', quality);
       }
 

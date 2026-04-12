@@ -150,7 +150,7 @@ async function ensureSheet(tabName, headers) {
 // ========================
 // Sessions CRUD
 // ========================
-const SESSION_HEADERS = ['id', 'name', 'accessCode', 'status', 'version', 'teamCount', 'createdAt', 'singlePieceMode', 'dataJson', 'dataJson2', 'dataJson3'];
+const SESSION_HEADERS = ['id', 'name', 'accessCode', 'status', 'version', 'teamCount', 'createdAt', 'singlePieceMode', 'dataJson', 'dataJson2', 'dataJson3', 'dataJson4', 'dataJson5'];
 const GAMESTATE_HEADERS = ['sessionId', 'dataJson', 'lastUpdated'];
 
 // Google Sheets 셀 한도 (50,000자) 대비 안전 마진
@@ -161,8 +161,8 @@ function stripBase64Images(obj) {
   if (!obj) return obj;
   const cleaned = { ...obj };
   if (cleaned.customBoardImage && cleaned.customBoardImage.startsWith('data:')) {
-    // 100KB(~137K chars) 이하면 허용, 그 이상이면 제거
-    if (cleaned.customBoardImage.length > 137000) {
+    // 200KB(~274K chars) 이하면 허용, 그 이상이면 제거
+    if (cleaned.customBoardImage.length > 274000) {
       console.warn(`[stripBase64] 보드 이미지 너무 큼 (${cleaned.customBoardImage.length}자) - 제거됨`);
       cleaned.customBoardImage = '';
     }
@@ -170,22 +170,22 @@ function stripBase64Images(obj) {
   return cleaned;
 }
 
-// 긴 JSON을 여러 청크로 분할
+// 긴 JSON을 여러 청크로 분할 (5개 셀: I~M열, 최대 ~245K chars ≈ 180KB)
 function splitDataJson(jsonStr) {
   const chunks = [];
   for (let i = 0; i < jsonStr.length; i += CELL_CHAR_LIMIT) {
     chunks.push(jsonStr.substring(i, i + CELL_CHAR_LIMIT));
   }
-  // 최대 3개 셀 (I, J, K열)
-  while (chunks.length < 3) chunks.push('');
-  return chunks.slice(0, 3);
+  while (chunks.length < 5) chunks.push('');
+  return chunks.slice(0, 5);
 }
 
 // 분할된 JSON 청크를 복원
 function joinDataJson(row) {
   let json = row[8] || '';
-  if (row[9]) json += row[9];
-  if (row[10]) json += row[10];
+  for (let i = 9; i <= 12; i++) {
+    if (row[i]) json += row[i];
+  }
   return json;
 }
 
@@ -198,7 +198,7 @@ async function createSession(session) {
   await enqueue(() => withRetry(
     () => sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
-      range: 'Sessions!A:K',
+      range: 'Sessions!A:M',
       valueInputOption: 'RAW',
       requestBody: {
         values: [[
@@ -210,9 +210,7 @@ async function createSession(session) {
           session.teamCount || 0,
           session.createdAt || Date.now(),
           session.singlePieceMode ? 'true' : 'false',
-          chunks[0],
-          chunks[1],
-          chunks[2]
+          chunks[0], chunks[1], chunks[2], chunks[3], chunks[4]
         ]]
       }
     }),
@@ -231,7 +229,7 @@ async function getAllSessions() {
   const res = await enqueue(() => withRetry(
     () => sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: 'Sessions!A:K'
+      range: 'Sessions!A:M'
     }),
     'getAllSessions'
   ));
@@ -279,7 +277,7 @@ async function updateSession(sessionId, updates) {
   const res = await enqueue(() => withRetry(
     () => sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: 'Sessions!A:K'
+      range: 'Sessions!A:M'
     }),
     'updateSession.get'
   ));
@@ -301,7 +299,7 @@ async function updateSession(sessionId, updates) {
   await enqueue(() => withRetry(
     () => sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
-      range: `Sessions!A${rowIndex + 1}:K${rowIndex + 1}`,
+      range: `Sessions!A${rowIndex + 1}:M${rowIndex + 1}`,
       valueInputOption: 'RAW',
       requestBody: {
         values: [[
@@ -313,9 +311,7 @@ async function updateSession(sessionId, updates) {
           updatedSession.teamCount || 0,
           updatedSession.createdAt || 0,
           updatedSession.singlePieceMode ? 'true' : 'false',
-          chunks[0],
-          chunks[1],
-          chunks[2]
+          chunks[0], chunks[1], chunks[2], chunks[3], chunks[4]
         ]]
       }
     }),
@@ -331,7 +327,7 @@ async function deleteSession(sessionId) {
   const res = await enqueue(() => withRetry(
     () => sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: 'Sessions!A:K'
+      range: 'Sessions!A:M'
     }),
     'deleteSession.get'
   ));
@@ -342,7 +338,7 @@ async function deleteSession(sessionId) {
   await enqueue(() => withRetry(
     () => sheets.spreadsheets.values.clear({
       spreadsheetId: SHEET_ID,
-      range: `Sessions!A${rowIndex + 1}:K${rowIndex + 1}`
+      range: `Sessions!A${rowIndex + 1}:M${rowIndex + 1}`
     }),
     'deleteSession.clear'
   ));
