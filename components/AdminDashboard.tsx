@@ -388,7 +388,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsGenerating(true);
 
     try {
-      const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || process.env.API_KEY || '';
+      const apiKey = 'server-proxy'; // real key stays on the server (api/gemini-proxy.js)
 
       if (!apiKey) {
         // API 키가 없으면 샘플 데이터로 대체
@@ -427,7 +427,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
 JSON만 응답하세요.`;
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`, {
+      const response = await fetch('/api/gemini-proxy/v1beta/models/gemini-3-flash-preview:generateContent', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

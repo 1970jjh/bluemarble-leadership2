@@ -74,7 +74,7 @@ const ReportView: React.FC<ReportViewProps> = ({ teams, onClose, reportGeneratio
 
     setIsGeneratingPoster(true);
     try {
-      const genAI = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+      const genAI = new GoogleGenAI({ apiKey: 'server-proxy', httpOptions: { baseUrl: `${window.location.origin}/api/gemini-proxy` } });
 
       const imageParts = await Promise.all(
         photos.slice(0, 3).map(async (file) => {
@@ -128,7 +128,7 @@ const ReportView: React.FC<ReportViewProps> = ({ teams, onClose, reportGeneratio
     setIsGeneratingTeam(true);
 
     try {
-      const genAI = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+      const genAI = new GoogleGenAI({ apiKey: 'server-proxy', httpOptions: { baseUrl: `${window.location.origin}/api/gemini-proxy` } });
       const feedbacks: TeamAIFeedback[] = [];
 
       // 팀 순서대로 리포트 생성 (1팀, 2팀, 3팀...)

@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
       },
       plugins: [react()],
       define: {
-        'process.env.API_KEY': JSON.stringify(env.API_KEY || env.VITE_GEMINI_API_KEY || env.GEMINI_API_KEY)
+        'process.env.API_KEY': JSON.stringify('server-proxy')
       },
       resolve: {
         alias: {

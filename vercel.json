@@ -10,6 +10,10 @@
   },
   "rewrites": [
     {
+      "source": "/api/gemini-proxy/(.*)",
+      "destination": "/api/gemini-proxy?path=$1"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     },

@@ -226,7 +226,7 @@ const App: React.FC = () => {
   };
 
   // --- AI Client Initialization ---
-  const genAI = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+  const genAI = new GoogleGenAI({ apiKey: 'server-proxy', httpOptions: { baseUrl: `${window.location.origin}/api/gemini-proxy` } });
 
   // --- LocalStorage: 참가자 세션 복구 ---
   useEffect(() => {
